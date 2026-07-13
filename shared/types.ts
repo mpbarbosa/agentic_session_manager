@@ -36,6 +36,21 @@ export interface Repo extends RepoConfigEntry {
   status: RepoStatus;
 }
 
+/** Server/runtime health (GET /api/health). */
+export interface HealthInfo {
+  /** Node.js version, e.g. "v22.3.0". */
+  node: string;
+  platform: string;
+  arch: string;
+  /** Server process uptime in seconds. */
+  uptimeSec: number;
+  /** Loopback host the API binds to. */
+  host: string;
+  apiPort: number;
+  /** Number of monitored repos in the config. */
+  repoCount: number;
+}
+
 /** Response body of GET /api/repos: the repo list plus the persisted selection. */
 export interface ReposResponse {
   repos: Repo[];
@@ -75,10 +90,69 @@ export interface Commit {
   shortHash: string;
   subject: string;
   author: string;
+  /** Author email. */
+  authorEmail: string;
   /** Author date, ISO 8601. */
   date: string;
   /** Author date, humanized (e.g. "3 days ago"). */
   relativeDate: string;
+  /** Commit body (may be empty; multi-line). */
+  body: string;
+}
+
+/** One line of a parsed unified diff (GET /api/repos/:id/diff). */
+export interface DiffLine {
+  type: "added" | "removed" | "normal";
+  text: string;
+  oldNum?: number;
+  newNum?: number;
+}
+
+/** A changed file with its parsed diff (GET /api/repos/:id/diff). */
+export interface DiffFile {
+  path: string;
+  name: string;
+  status: "A" | "M" | "D";
+  diff: DiffLine[];
+}
+
+/** One file changed by a single commit, with line stats + its diff. */
+export interface CommitFile {
+  path: string;
+  name: string;
+  status: "A" | "M" | "D";
+  additions: number;
+  deletions: number;
+  diff: DiffLine[];
+}
+
+/** Full detail for one commit (GET /api/repos/:id/commit/:hash). */
+export interface CommitDetail {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  body: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  relativeDate: string;
+  files: CommitFile[];
+}
+
+/** Result of checking out a ref (POST /api/repos/:id/checkout). */
+export interface CheckoutResult {
+  ok: boolean;
+  ref: string;
+  detached: boolean;
+  head: string;
+  branch: string | null;
+}
+
+/** Result of creating a worktree (POST /api/repos/:id/worktrees). */
+export interface CreateWorktreeResult {
+  ok: boolean;
+  path: string;
+  branch: string;
 }
 
 /** Detailed git status for one repo (GET /api/repos/:id/status). */

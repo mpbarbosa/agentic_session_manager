@@ -14,6 +14,10 @@ import type {
   BrowseResult,
   BumpDecision,
   Commit,
+  CommitDetail,
+  CommitFile,
+  DiffFile,
+  DiffLine,
   FileChange,
   GitStatusDetail,
   PipelineEvent,
@@ -169,6 +173,44 @@ async function generateCommitMessage(
     .trim();
 }
 
+/** A commit-message generation failure carrying the HTTP status the route should return. */
+class CommitMsgError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Compute the working-tree diff and ask Claude for a commit message.
+ * `statusText` is the already-fetched `git status --porcelain`. Throws a
+ * CommitMsgError (with the right HTTP status) on auth/model failures.
+ */
+async function generateOrThrow(dir: string, statusText: string): Promise<string> {
+  const stat = (await git(dir, ["diff", "HEAD", "--stat"])) ?? "";
+  const patch = (await git(dir, ["diff", "HEAD"])) ?? "";
+  let message: string;
+  try {
+    message = await generateCommitMessage(statusText, stat, patch);
+  } catch (err) {
+    const raw = (err as Error).message ?? "";
+    const isAuth =
+      err instanceof Anthropic.AuthenticationError ||
+      (err as { status?: number }).status === 401 ||
+      /authentication method|api[ _]?key|ANTHROPIC_API_KEY|credential/i.test(raw);
+    throw new CommitMsgError(
+      isAuth
+        ? "No Anthropic credentials found. Set ANTHROPIC_API_KEY (or run `ant auth login`) for the API server, then retry."
+        : `Could not generate a commit message: ${raw}`,
+      isAuth ? 401 : 502,
+    );
+  }
+  if (!message) throw new CommitMsgError("The model returned an empty commit message", 502);
+  return message;
+}
+
 /** First installed git-forest-style viewer on PATH (git-foresta preferred), or null. */
 async function findForestBin(): Promise<string | null> {
   for (const bin of ["git-foresta", "git-forest"]) {
@@ -267,23 +309,75 @@ async function readStatusDetail(entry: RepoConfigEntry, cwd?: string): Promise<G
 
 const LOG_SEP = "\x1f"; // unit separator: safe field delimiter within a commit line
 
-async function readLog(entry: RepoConfigEntry, limit: number, cwd?: string): Promise<Commit[]> {
+// Record separator between commits — lets a commit's (multi-line) %b body be one field.
+const LOG_REC = "\x1e";
+
+async function readLog(
+  entry: RepoConfigEntry,
+  limit: number,
+  cwd?: string,
+  all = false,
+): Promise<Commit[]> {
   const dir = cwd ?? entry.path;
   if (!dir) return [];
 
-  const format = ["%H", "%h", "%s", "%an", "%ad", "%ar"].join(LOG_SEP);
-  const raw = await git(dir, [
-    "log",
-    `-n${limit}`,
-    "--date=iso-strict",
-    `--pretty=format:${format}`,
-  ]);
+  const format = ["%H", "%h", "%s", "%an", "%ae", "%ad", "%ar", "%b"].join(LOG_SEP) + LOG_REC;
+  const args = ["log", `-n${limit}`, "--date=iso-strict"];
+  if (all) args.push("--all");
+  args.push(`--pretty=format:${format}`);
+  const raw = await git(dir, args);
   if (!raw) return []; // not a repo, or no commits yet
 
-  return raw.split("\n").map((line) => {
-    const [hash, shortHash, subject, author, date, relativeDate] = line.split(LOG_SEP);
-    return { hash, shortHash, subject, author, date, relativeDate };
+  return raw
+    .split(LOG_REC)
+    .map((rec) => rec.replace(/^\n/, "")) // git separates entries with a newline
+    .filter((rec) => rec.length > 0)
+    .map((rec) => {
+      const [hash, shortHash, subject, author, authorEmail, date, relativeDate, body = ""] =
+        rec.split(LOG_SEP);
+      return { hash, shortHash, subject, author, authorEmail, date, relativeDate, body: body.trim() };
+    });
+}
+
+/**
+ * Full detail for one commit: metadata + per-file stats + parsed diff.
+ * `git show --numstat` and `--name-status` list files in the same order, so we pair them by index.
+ */
+async function readCommitDetail(dir: string, hash: string): Promise<CommitDetail | null> {
+  const SEP = "\x1f";
+  const metaFmt = ["%H", "%h", "%s", "%b", "%an", "%ae", "%ad", "%ar"].join(SEP);
+  const meta = await git(dir, ["show", "-s", "--date=iso-strict", `--format=${metaFmt}`, hash]);
+  if (meta === null) return null;
+  const parts = meta.split(SEP);
+  const [fullHash = hash, shortHash = "", subject = "", body = "", author = "", authorEmail = "", date = "", relativeDate = ""] =
+    parts;
+
+  const numstat = (await git(dir, ["show", hash, "--numstat", "--format="])) ?? "";
+  const namestat = (await git(dir, ["show", hash, "--name-status", "--format="])) ?? "";
+  const combined = (await git(dir, ["show", hash, "--format="])) ?? "";
+  const diffByFile = parseUnifiedDiff(combined);
+
+  const numLines = numstat.split("\n").filter(Boolean);
+  const nameLines = namestat.split("\n").filter(Boolean);
+  const files: CommitFile[] = nameLines.map((nameLine, i) => {
+    const nameCols = nameLine.split("\t");
+    const code = nameCols[0] ?? "M";
+    const filePath = nameCols[nameCols.length - 1]; // for R/C, the new path is last
+    const numCols = (numLines[i] ?? "").split("\t");
+    const additions = numCols[0] && numCols[0] !== "-" ? Number(numCols[0]) || 0 : 0;
+    const deletions = numCols[1] && numCols[1] !== "-" ? Number(numCols[1]) || 0 : 0;
+    const status: CommitFile["status"] = code[0] === "A" ? "A" : code[0] === "D" ? "D" : "M";
+    return {
+      path: filePath,
+      name: path.basename(filePath),
+      status,
+      additions,
+      deletions,
+      diff: diffByFile.get(filePath) ?? [],
+    };
   });
+
+  return { hash: fullHash, shortHash, subject, body, author, authorEmail, date, relativeDate, files };
 }
 
 /** Parse `git worktree list --porcelain` into structured entries (first = main). */
@@ -519,6 +613,37 @@ function childEnv(): NodeJS.ProcessEnv {
   delete env.ANTHROPIC_API_KEY;
   delete env.ANTHROPIC_AUTH_TOKEN;
   return env;
+}
+
+/**
+ * Run a shell command in `dir` with a sanitized env, a 20s timeout, and a 1MB
+ * output cap. Combines stdout+stderr and always resolves (non-zero exit is data,
+ * not an exception). Used by the Terminal drawer's exec endpoint.
+ */
+async function runShell(dir: string, command: string): Promise<{ code: number; output: string }> {
+  try {
+    const { stdout, stderr } = await execFileAsync("bash", ["-c", command], {
+      cwd: dir,
+      env: childEnv(),
+      timeout: 20_000,
+      maxBuffer: 1024 * 1024,
+    });
+    return { code: 0, output: stdout + stderr };
+  } catch (err) {
+    const e = err as {
+      code?: number | string;
+      stdout?: string;
+      stderr?: string;
+      killed?: boolean;
+      signal?: string;
+      message?: string;
+    };
+    const body = (e.stdout ?? "") + (e.stderr ?? "");
+    if (e.killed && e.signal === "SIGTERM") {
+      return { code: 124, output: `${body}\n[command timed out after 20s]` };
+    }
+    return { code: typeof e.code === "number" ? e.code : 1, output: body || e.message || "" };
+  }
 }
 
 /** Run a shell command in `cwd`, streaming stdout+stderr as log events. Resolves the exit code. */
@@ -838,6 +963,119 @@ app.get("/api/repos/:id/status", async (req, res) => {
   }
 });
 
+/** Parse a combined `git diff` into per-file DiffLine[] keyed by the b-side path. */
+function parseUnifiedDiff(combined: string): Map<string, DiffLine[]> {
+  const byFile = new Map<string, DiffLine[]>();
+  let cur: DiffLine[] | null = null;
+  let oldNum = 0;
+  let newNum = 0;
+  for (const raw of combined.split("\n")) {
+    if (raw.startsWith("diff --git ")) {
+      const m = /^diff --git a\/(.+) b\/(.+)$/.exec(raw);
+      cur = [];
+      byFile.set(m ? m[2] : raw.slice("diff --git ".length), cur);
+      continue;
+    }
+    if (!cur) continue;
+    if (raw.startsWith("@@")) {
+      const m = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+      if (m) {
+        oldNum = Number(m[1]);
+        newNum = Number(m[2]);
+      }
+      continue;
+    }
+    if (
+      raw.startsWith("--- ") ||
+      raw.startsWith("+++ ") ||
+      raw.startsWith("index ") ||
+      raw.startsWith("new file mode") ||
+      raw.startsWith("deleted file mode") ||
+      raw.startsWith("old mode") ||
+      raw.startsWith("new mode") ||
+      raw.startsWith("similarity ") ||
+      raw.startsWith("rename ") ||
+      raw.startsWith("copy ") ||
+      raw.startsWith("\\ ")
+    ) {
+      continue;
+    }
+    if (raw.startsWith("Binary files")) {
+      cur.push({ type: "normal", text: "(binary file)" });
+      continue;
+    }
+    if (cur.length > 3000) continue; // cap huge diffs
+    const marker = raw[0];
+    const text = raw.slice(1);
+    if (marker === "+") {
+      cur.push({ type: "added", text, newNum });
+      newNum++;
+    } else if (marker === "-") {
+      cur.push({ type: "removed", text, oldNum });
+      oldNum++;
+    } else {
+      cur.push({ type: "normal", text, oldNum, newNum });
+      oldNum++;
+      newNum++;
+    }
+  }
+  return byFile;
+}
+
+/** Changed files with parsed diffs (tracked via `git diff HEAD`; untracked = whole-file adds). */
+async function readDiffFiles(dir: string): Promise<DiffFile[]> {
+  // `-b` puts a `## branch` line first so git()'s .trim() doesn't eat the first
+  // file entry's leading status space; we then skip that header line.
+  const statusText = (await git(dir, ["status", "--porcelain", "-b"])) ?? "";
+  const combined = (await git(dir, ["diff", "HEAD"])) ?? "";
+  const parsed = parseUnifiedDiff(combined);
+  const files: DiffFile[] = [];
+  for (const line of statusText.split("\n").filter((l) => l && !l.startsWith("## "))) {
+    const x = line[0];
+    const y = line[1];
+    let p = line.slice(3);
+    const arrow = p.indexOf(" -> ");
+    if (arrow >= 0) p = p.slice(arrow + 4);
+    const untracked = x === "?";
+    const status: DiffFile["status"] =
+      untracked || x === "A" ? "A" : x === "D" || y === "D" ? "D" : "M";
+    let diff = parsed.get(p) ?? [];
+    if (untracked && diff.length === 0) {
+      try {
+        const content = await readFile(path.join(dir, p), "utf8");
+        diff = content
+          .split("\n")
+          .slice(0, 3000)
+          .map((t, i) => ({ type: "added" as const, text: t, newNum: i + 1 }));
+      } catch {
+        diff = [{ type: "normal", text: "(unreadable / binary)" }];
+      }
+    }
+    files.push({ path: p, name: path.basename(p), status, diff });
+  }
+  return files;
+}
+
+// Changed files with parsed unified diffs (for the Changes view). Honors ?worktree=.
+app.get("/api/repos/:id/diff", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    const dir = await resolveWorktreePath(entry, req.query.worktree);
+    if (!dir) {
+      res.json({ files: [] });
+      return;
+    }
+    res.json({ files: await readDiffFiles(dir) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // Git worktrees attached to one repo (main + linked).
 app.get("/api/repos/:id/worktrees", async (req, res) => {
   try {
@@ -848,6 +1086,172 @@ app.get("/api/repos/:id/worktrees", async (req, res) => {
       return;
     }
     res.json({ worktrees: await readWorktrees(entry) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Full detail (metadata + per-file stats + parsed diff) for one commit. Honors ?worktree=.
+app.get("/api/repos/:id/commit/:hash", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    // Only hex hashes reach git — no arbitrary refs, no option injection.
+    if (!/^[0-9a-fA-F]{4,64}$/.test(req.params.hash)) {
+      res.status(400).json({ error: "Invalid commit hash" });
+      return;
+    }
+    const dir = (await resolveWorktreePath(entry, req.query.worktree)) ?? entry.path;
+    if (!dir) {
+      res.status(404).json({ error: "Repo has no local path" });
+      return;
+    }
+    const detail = await readCommitDetail(dir, req.params.hash);
+    if (!detail) {
+      res.status(404).json({ error: "No such commit" });
+      return;
+    }
+    res.json(detail);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Create a new linked worktree. Body: { path, branch }. Attaches an existing branch
+// or creates a new one (from HEAD) when it doesn't exist yet.
+app.post("/api/repos/:id/worktrees", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    if (!entry.path) {
+      res.status(400).json({ error: "Repo has no local path" });
+      return;
+    }
+    const rawPath: unknown = req.body?.path;
+    const rawBranch: unknown = req.body?.branch;
+    if (typeof rawPath !== "string" || rawPath.trim() === "") {
+      res.status(400).json({ error: "Body must include a 'path' for the new worktree" });
+      return;
+    }
+    if (
+      typeof rawBranch !== "string" ||
+      rawBranch.trim() === "" ||
+      rawBranch.startsWith("-") ||
+      !/^[\w./-]+$/.test(rawBranch.trim())
+    ) {
+      res.status(400).json({ error: "Body must include a valid 'branch' name" });
+      return;
+    }
+    // path.resolve neutralizes any leading "-", so the path can't become a git option.
+    const wtPath = path.resolve(rawPath.trim());
+    const branch = rawBranch.trim();
+    if (existsSync(wtPath)) {
+      res.status(409).json({ error: `Path already exists: ${wtPath}` });
+      return;
+    }
+
+    const branchExists = await gitExec(entry.path, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${branch}`,
+    ]);
+    const args = branchExists.ok
+      ? ["worktree", "add", wtPath, branch] // attach the existing branch
+      : ["worktree", "add", "-b", branch, wtPath]; // create a new branch from HEAD
+    const add = await gitExec(entry.path, args);
+    if (!add.ok) {
+      res.status(409).json({ error: add.stderr || add.stdout || "git worktree add failed" });
+      return;
+    }
+    res.json({ ok: true, path: wtPath, branch });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Check out a ref (commit hash or branch) in the main tree (or ?worktree). Body: { ref, worktree? }.
+// Refuses when the tree is dirty; a bare hash lands on a detached HEAD (reversible).
+app.post("/api/repos/:id/checkout", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    const ref: unknown = req.body?.ref;
+    if (
+      typeof ref !== "string" ||
+      ref === "" ||
+      ref.startsWith("-") ||
+      !/^[\w./~^{}@-]+$/.test(ref)
+    ) {
+      res.status(400).json({ error: "Body must include a valid 'ref'" });
+      return;
+    }
+    const dir = (await resolveWorktreePath(entry, req.body?.worktree)) ?? entry.path;
+    if (!dir) {
+      res.status(404).json({ error: "Repo has no local path" });
+      return;
+    }
+    const verify = await gitExec(dir, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+    if (!verify.ok) {
+      res.status(404).json({ error: `'${ref}' is not a commit in this repo` });
+      return;
+    }
+    const dirty = await git(dir, ["status", "--porcelain"]);
+    if (dirty && dirty.length > 0) {
+      res.status(409).json({
+        error: "The working tree has uncommitted changes. Commit or stash them first.",
+      });
+      return;
+    }
+    const co = await gitExec(dir, ["checkout", ref]);
+    if (!co.ok) {
+      res.status(409).json({ error: co.stderr || co.stdout || "git checkout failed" });
+      return;
+    }
+    const head = (await git(dir, ["rev-parse", "--short", "HEAD"])) ?? "";
+    const branch = await git(dir, ["symbolic-ref", "--quiet", "--short", "HEAD"]); // null if detached
+    res.json({ ok: true, ref, detached: branch === null, head, branch });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Run a shell command in the repo/worktree dir (the Terminal drawer). Body: { command, worktree? }.
+// SECURITY: this is arbitrary RCE — acceptable ONLY because the server is localhost-bound (see the
+// security notes below) and shares the pipeline's posture. childEnv() strips the Anthropic keys so a
+// command can't exfiltrate them; 20s timeout + 1MB output cap bound runaway/huge output.
+app.post("/api/repos/:id/exec", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    if (!entry.path) {
+      res.status(400).json({ error: "Repository has no local path" });
+      return;
+    }
+    const command: unknown = req.body?.command;
+    if (typeof command !== "string" || command.trim() === "") {
+      res.status(400).json({ error: "Body must include a non-empty 'command'" });
+      return;
+    }
+    const dir = (await resolveWorktreePath(entry, req.body?.worktree)) ?? entry.path;
+    const { code, output } = await runShell(dir, command);
+    res.json({ command, cwd: dir, code, output });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1176,32 +1580,18 @@ app.post("/api/repos/:id/commit", async (req, res) => {
       return;
     }
 
-    // Compute the diff WITHOUT touching the index, so a generation failure leaves the tree untouched.
-    const stat = (await git(dir, ["diff", "HEAD", "--stat"])) ?? "";
-    const patch = (await git(dir, ["diff", "HEAD"])) ?? "";
-
+    // Use a caller-supplied message verbatim; otherwise ask Claude for one.
+    // Generation reads the diff WITHOUT touching the index, so a failure leaves the tree untouched.
+    const custom = typeof req.body?.message === "string" ? req.body.message.trim() : "";
     let message: string;
     try {
-      message = await generateCommitMessage(statusText, stat, patch);
+      message = custom || (await generateOrThrow(dir, statusText));
     } catch (err) {
-      const raw = (err as Error).message ?? "";
-      const isAuth =
-        err instanceof Anthropic.AuthenticationError ||
-        (err as { status?: number }).status === 401 ||
-        /authentication method|api[ _]?key|ANTHROPIC_API_KEY|credential/i.test(raw);
-      if (isAuth) {
-        res.status(401).json({
-          error:
-            "No Anthropic credentials found. Set ANTHROPIC_API_KEY (or run `ant auth login`) for the API server, then retry.",
-        });
+      if (err instanceof CommitMsgError) {
+        res.status(err.status).json({ error: err.message });
         return;
       }
-      res.status(502).json({ error: `Could not generate a commit message: ${raw}` });
-      return;
-    }
-    if (!message) {
-      res.status(502).json({ error: "The model returned an empty commit message" });
-      return;
+      throw err;
     }
 
     // Only now do we mutate the repo.
@@ -1225,6 +1615,44 @@ app.post("/api/repos/:id/commit", async (req, res) => {
   }
 });
 
+// Preview an AI-generated commit message WITHOUT committing (for the Changes view's
+// "generate" button). Body: { worktree? }. Never touches the index.
+app.post("/api/repos/:id/commit/message", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    if (!entry.path) {
+      res.status(400).json({ error: "Repository has no local path" });
+      return;
+    }
+    const dir = (await resolveWorktreePath(entry, req.body?.worktree)) ?? entry.path;
+    const statusText = await git(dir, ["status", "--porcelain"]);
+    if (statusText === null) {
+      res.status(400).json({ error: "Not a git repository" });
+      return;
+    }
+    if (statusText.trim() === "") {
+      res.status(409).json({ error: "Nothing to describe — the working tree is clean" });
+      return;
+    }
+    try {
+      res.json({ message: await generateOrThrow(dir, statusText) });
+    } catch (err) {
+      if (err instanceof CommitMsgError) {
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // Recent commits for one repo. Optional ?limit= (default 30, capped at 200).
 app.get("/api/repos/:id/log", async (req, res) => {
   try {
@@ -1236,8 +1664,9 @@ app.get("/api/repos/:id/log", async (req, res) => {
     }
     const requested = Number(req.query.limit);
     const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 200) : 30;
+    const all = req.query.all === "1" || req.query.all === "true";
     const dir = await resolveWorktreePath(entry, req.query.worktree);
-    res.json({ commits: await readLog(entry, limit, dir) });
+    res.json({ commits: await readLog(entry, limit, dir, all) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1372,7 +1801,22 @@ app.put("/api/selection/worktree", async (req, res) => {
   }
 });
 
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/health", async (_req, res) => {
+  try {
+    const config = await loadConfig();
+    res.json({
+      node: process.version,
+      platform: os.platform(),
+      arch: os.arch(),
+      uptimeSec: Math.floor(process.uptime()),
+      host: HOST,
+      apiPort: PORT,
+      repoCount: config.repos.length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
 
 app.listen(PORT, HOST, () => {
   console.log(`[api] listening on http://${HOST}:${PORT}  (config: ${CONFIG_PATH})`);
