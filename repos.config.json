@@ -1,0 +1,23 @@
+{
+  "repos": [
+    {
+      "id": "agentic-session-manager",
+      "name": "agentic_session_manager",
+      "path": "/home/mpb/Documents/GitHub/agentic_session_manager",
+      "description": "This monitoring app's own repository",
+      "url": "https://github.com/mpbarbosa/agentic_session_manager"
+    },
+    {
+      "id": "agora-na-copa-2026",
+      "name": "agora_na_copa_2026",
+      "path": "/home/mpb/Documents/GitHub/agora_na_copa_2026"
+    },
+    {
+      "id": "teorizando",
+      "name": "teorizando",
+      "path": "/home/mpb/Documents/GitHub/teorizando"
+    }
+  ],
+  "selectedId": "agentic-session-manager",
+  "selectedWorktree": null
+}
