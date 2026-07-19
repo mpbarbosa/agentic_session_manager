@@ -14,6 +14,7 @@ import {
   mergeWorktree,
   syncWorktreeFromMain,
   fetchCommitDetail,
+  fetchGraph,
   checkoutRef,
   createWorktree,
   execCommand,
@@ -180,6 +181,17 @@ export default function App() {
     [activeRepo.id, selectedWorktree],
   );
 
+  // Fetch a rendered git-log graph (History → Graph mode).
+  const handleLoadGraph = useCallback(
+    (opts: { style: 'pretty' | 'forest'; all: boolean; limit: number }) =>
+      fetchGraph(
+        activeRepo.id,
+        { style: opts.style, all: opts.all, decorate: true, oneline: false, graph: true, limit: opts.limit },
+        selectedWorktree,
+      ),
+    [activeRepo.id, selectedWorktree],
+  );
+
   // Fetch a commit's full detail (files + diff) for the History inspector.
   const loadCommit = useCallback(
     (hash: string) => fetchCommitDetail(activeRepo.id, hash, selectedWorktree),
@@ -311,6 +323,7 @@ export default function App() {
               onLoadCommit={loadCommit}
               onCheckout={handleCheckoutCommit}
               onQueryLog={handleQueryLog}
+              onLoadGraph={handleLoadGraph}
               loading={historyLoading}
               searchQuery={searchQuery}
             />

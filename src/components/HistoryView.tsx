@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Commit } from '../types';
 import type { CommitDetail } from '../../shared/types.ts';
+import type { GraphResult } from '../api';
 import {
   Play,
   FileText,
@@ -9,6 +10,8 @@ import {
   PlusSquare,
   MinusSquare,
   Edit,
+  List,
+  GitBranch,
 } from 'lucide-react';
 import { AnsiText } from './AnsiText';
 
@@ -23,6 +26,8 @@ interface HistoryViewProps {
   onCheckout: (hash: string) => void;
   /** Re-run the git log with the given limit / all-branches flags. */
   onQueryLog: (opts: { limit: number; all: boolean }) => void;
+  /** Fetch a rendered git-log graph (pretty = git --graph; forest = git-foresta). */
+  onLoadGraph: (opts: { style: 'pretty' | 'forest'; all: boolean; limit: number }) => Promise<GraphResult>;
   /** True while a log query is in flight. */
   loading: boolean;
   searchQuery: string;
@@ -36,6 +41,7 @@ export default function HistoryView({
   onLoadCommit,
   onCheckout,
   onQueryLog,
+  onLoadGraph,
   loading,
   searchQuery
 }: HistoryViewProps) {
@@ -48,7 +54,52 @@ export default function HistoryView({
   const [allBranches, setAllBranches] = useState(true);
   const [limit, setLimit] = useState('100');
 
-  const runQuery = () => onQueryLog({ limit: Math.max(1, Number(limit) || 100), all: allBranches });
+  // Graph mode: renders `git log --graph` (pretty) or git-foresta output as ANSI text.
+  // Defaults to graph (the pretty topology view is the primary History surface).
+  const [viewMode, setViewMode] = useState<'list' | 'graph'>('graph');
+  const [graphStyle, setGraphStyle] = useState<'pretty' | 'forest'>('pretty');
+  const [graph, setGraph] = useState<GraphResult | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
+  // True when 'forest' was requested but git-foresta was absent, so we rendered 'pretty' instead.
+  const [graphFellBack, setGraphFellBack] = useState(false);
+
+  const numericLimit = () => Math.max(1, Number(limit) || 100);
+
+  const loadGraph = useCallback(
+    (style: 'pretty' | 'forest', all: boolean, lim: number) => {
+      setGraphLoading(true);
+      setGraphError(null);
+      setGraphFellBack(false);
+      onLoadGraph({ style, all, limit: lim })
+        .then((res) => {
+          // Forest needs git-foresta; when it's absent, transparently fall back to the
+          // always-available pretty (`git --graph`) render so the graph is never blank.
+          if (style === 'forest' && !res.forestAvailable) {
+            setGraphFellBack(true);
+            return onLoadGraph({ style: 'pretty', all, limit: lim });
+          }
+          return res;
+        })
+        .then(setGraph)
+        .catch((err) => setGraphError((err as Error).message))
+        .finally(() => setGraphLoading(false));
+    },
+    [onLoadGraph],
+  );
+
+  // (Re)load the graph whenever graph mode is active and its inputs change. Guarded on
+  // repoPath so it waits for the repo to be ready and reloads on repo/worktree switch
+  // (loadGraph identity changes with the active repo).
+  useEffect(() => {
+    if (viewMode === 'graph' && repoPath) loadGraph(graphStyle, allBranches, numericLimit());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, graphStyle, repoPath, loadGraph]);
+
+  const runQuery = () => {
+    if (viewMode === 'graph') loadGraph(graphStyle, allBranches, numericLimit());
+    else onQueryLog({ limit: numericLimit(), all: allBranches });
+  };
 
   // Load the selected commit's full detail (files + diff) from the server.
   useEffect(() => {
@@ -97,19 +148,61 @@ export default function HistoryView({
 
           {/* Style Controls */}
           <div className="flex flex-wrap items-center gap-6 bg-surface-container-lowest p-3 border border-outline-variant rounded-lg text-xs font-mono">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-outline font-bold uppercase">Style:</span>
-              <select 
-                value={styleMode}
-                onChange={(e) => setStyleMode(e.target.value as any)}
-                className="bg-surface border-none text-secondary p-0 focus:ring-0 cursor-pointer font-bold"
+            {/* List / Graph view toggle */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-surface-container-high text-primary font-bold'
+                    : 'text-outline hover:text-on-surface'
+                }`}
               >
-                <option value="oneline">oneline</option>
-                <option value="full">full</option>
-                <option value="medium">medium</option>
-              </select>
+                <List className="w-3.5 h-3.5" /> List
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('graph')}
+                className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                  viewMode === 'graph'
+                    ? 'bg-surface-container-high text-primary font-bold'
+                    : 'text-outline hover:text-on-surface'
+                }`}
+              >
+                <GitBranch className="w-3.5 h-3.5" /> Graph
+              </button>
             </div>
-            
+
+            <div className="h-4 w-px bg-outline-variant hidden sm:block"></div>
+
+            {viewMode === 'list' ? (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-outline font-bold uppercase">Style:</span>
+                <select
+                  value={styleMode}
+                  onChange={(e) => setStyleMode(e.target.value as any)}
+                  className="bg-surface border-none text-secondary p-0 focus:ring-0 cursor-pointer font-bold"
+                >
+                  <option value="oneline">oneline</option>
+                  <option value="full">full</option>
+                  <option value="medium">medium</option>
+                </select>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-outline font-bold uppercase">Graph:</span>
+                <select
+                  value={graphStyle}
+                  onChange={(e) => setGraphStyle(e.target.value as 'pretty' | 'forest')}
+                  className="bg-surface border-none text-secondary p-0 focus:ring-0 cursor-pointer font-bold"
+                >
+                  <option value="pretty">pretty (git --graph)</option>
+                  <option value="forest">forest (git-foresta)</option>
+                </select>
+              </div>
+            )}
+
             <div className="h-4 w-px bg-outline-variant hidden sm:block"></div>
 
             <div className="flex items-center gap-2">
@@ -141,16 +234,36 @@ export default function HistoryView({
 
             <button
               onClick={runQuery}
-              disabled={loading}
+              disabled={viewMode === 'graph' ? graphLoading : loading}
               className="bg-secondary-container text-on-secondary-container px-4 py-1 rounded font-semibold hover:opacity-95 transition-all flex items-center gap-1 disabled:opacity-60"
             >
               <Play className="w-3.5 h-3.5" />
-              {loading ? 'Running…' : 'Run'}
+              {(viewMode === 'graph' ? graphLoading : loading) ? 'Running…' : 'Run'}
             </button>
           </div>
         </div>
 
+        {/* Graph Mode: rendered `git log --graph` (pretty) / git-foresta output */}
+        {viewMode === 'graph' && (
+          <div className="flex-1 overflow-auto p-4 bg-[#0d0e12] font-mono text-xs leading-relaxed">
+            {graphLoading && <div className="text-outline animate-pulse">Rendering graph…</div>}
+            {graphError && <div className="text-error whitespace-pre-wrap">{graphError}</div>}
+            {!graphLoading && !graphError && graphFellBack && (
+              <div className="mb-3 text-tertiary border border-tertiary/30 bg-tertiary/5 rounded p-2">
+                git-foresta isn&apos;t installed — showing git&apos;s built-in <span className="text-secondary">--graph</span> instead.
+              </div>
+            )}
+            {!graphLoading && !graphError && graph && graph.text && (
+              <pre className="whitespace-pre"><AnsiText text={graph.text} /></pre>
+            )}
+            {!graphLoading && !graphError && graph && !graph.text && (
+              <div className="text-outline">No history to graph.</div>
+            )}
+          </div>
+        )}
+
         {/* Commit Log Table List Area */}
+        {viewMode === 'list' && (
         <div className="flex-1 overflow-y-auto p-4 font-mono text-xs select-none">
           <div className="max-w-5xl mx-auto space-y-1">
             {filteredCommits.map((commit, index) => {
@@ -257,6 +370,7 @@ export default function HistoryView({
             )}
           </div>
         </div>
+        )}
 
         {/* Console Status Footer */}
         <footer className="bg-surface-container-low border-t border-outline-variant h-12 flex items-center justify-between px-6 shrink-0 font-mono text-[11px] text-outline select-none">
@@ -277,8 +391,8 @@ export default function HistoryView({
         </footer>
       </div>
 
-      {/* RIGHT SIDEBAR: Inspector Panel for Commit Details */}
-      {selectedCommit && (
+      {/* RIGHT SIDEBAR: Inspector Panel for Commit Details (list mode only) */}
+      {viewMode === 'list' && selectedCommit && (
         <aside className="w-[320px] bg-surface-container border-l border-outline-variant flex flex-col shrink-0 select-none">
 
           <div className="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-high">

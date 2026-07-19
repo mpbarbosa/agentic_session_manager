@@ -16,6 +16,16 @@
       "id": "teorizando",
       "name": "teorizando",
       "path": "/home/mpb/Documents/GitHub/teorizando"
+    },
+    {
+      "id": "sysupdate",
+      "name": "sysupdate",
+      "path": "/home/mpb/Documents/GitHub/sysupdate"
+    },
+    {
+      "id": "linkedin",
+      "name": "linkedin",
+      "path": "/home/mpb/Documents/GitHub/linkedin"
     }
   ],
   "selectedId": "agentic-session-manager",

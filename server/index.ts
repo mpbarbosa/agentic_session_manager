@@ -9,6 +9,15 @@ import crypto from "node:crypto";
 import { promisify } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  uniqueId,
+  parseBranchLine,
+  parseWorktrees,
+  bumpVersionInPackageJson,
+  authMessage,
+  selectTestRunners,
+  pickDefaultBranch,
+} from "./pure.ts";
 import type {
   BrowseEntry,
   BrowseResult,
@@ -80,14 +89,6 @@ async function isGitRepo(dir: string): Promise<boolean> {
 }
 
 /** Turn a directory name into a slug, kept unique against `taken`. */
-function uniqueId(base: string, taken: Set<string>): string {
-  const slug = base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "repo";
-  if (!taken.has(slug)) return slug;
-  let i = 2;
-  while (taken.has(`${slug}-${i}`)) i++;
-  return `${slug}-${i}`;
-}
-
 /** Run a git command in `cwd`, returning trimmed stdout or null on any failure. */
 async function git(cwd: string, args: string[]): Promise<string | null> {
   try {
@@ -252,27 +253,6 @@ async function readStatus(entry: RepoConfigEntry): Promise<RepoStatus> {
 }
 
 /** Parse the `## ...` branch header line from `git status --porcelain -b`. */
-function parseBranchLine(line: string): Pick<GitStatusDetail, "branch" | "upstream" | "ahead" | "behind"> {
-  let rest = line.replace(/^## /, "");
-  let ahead = 0;
-  let behind = 0;
-
-  const track = /\[(.+)\]$/.exec(rest);
-  if (track) {
-    ahead = Number(/ahead (\d+)/.exec(track[1])?.[1] ?? 0);
-    behind = Number(/behind (\d+)/.exec(track[1])?.[1] ?? 0);
-    rest = rest.slice(0, track.index).trim();
-  }
-
-  const dots = rest.indexOf("...");
-  if (dots >= 0) {
-    return { branch: rest.slice(0, dots), upstream: rest.slice(dots + 3), ahead, behind };
-  }
-  // "No commits yet on main" — surface the real branch name.
-  const noCommits = /^No commits yet on (.+)$/.exec(rest);
-  return { branch: noCommits ? noCommits[1] : rest, upstream: null, ahead, behind };
-}
-
 async function readStatusDetail(entry: RepoConfigEntry, cwd?: string): Promise<GitStatusDetail> {
   const base: GitStatusDetail = {
     id: entry.id,
@@ -381,39 +361,6 @@ async function readCommitDetail(dir: string, hash: string): Promise<CommitDetail
 }
 
 /** Parse `git worktree list --porcelain` into structured entries (first = main). */
-function parseWorktrees(porcelain: string): Worktree[] {
-  return porcelain
-    .split(/\n\n+/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block, idx) => {
-      const wt: Worktree = {
-        path: "",
-        head: null,
-        branch: null,
-        isMain: idx === 0,
-        isBare: false,
-        detached: false,
-        locked: false,
-        lockedReason: null,
-        prunable: false,
-      };
-      for (const line of block.split("\n")) {
-        if (line.startsWith("worktree ")) wt.path = line.slice("worktree ".length);
-        else if (line.startsWith("HEAD ")) wt.head = line.slice("HEAD ".length);
-        else if (line.startsWith("branch "))
-          wt.branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
-        else if (line === "bare") wt.isBare = true;
-        else if (line === "detached") wt.detached = true;
-        else if (line === "locked" || line.startsWith("locked ")) {
-          wt.locked = true;
-          wt.lockedReason = line.length > "locked ".length ? line.slice("locked ".length) : null;
-        } else if (line === "prunable" || line.startsWith("prunable ")) wt.prunable = true;
-      }
-      return wt;
-    });
-}
-
 async function readWorktrees(entry: RepoConfigEntry): Promise<Worktree[]> {
   if (!entry.path) return [];
   const out = await git(entry.path, ["worktree", "list", "--porcelain"]);
@@ -442,17 +389,16 @@ async function resolveWorktreePath(
 async function detectTestRunners(entry: RepoConfigEntry): Promise<TestRunner[]> {
   const dir = entry.path;
   if (!dir) return [];
-  const runners: TestRunner[] = [];
-  const add = (r: Omit<TestRunner, "id">) => runners.push({ id: `r${runners.length}`, ...r });
 
-  // 1. Docker test shell scripts.
-  for (const rel of ["scripts/docker-test.sh", "docker-test.sh", "test-docker.sh", "scripts/test-docker.sh"]) {
-    if (existsSync(path.join(dir, rel))) {
-      add({ kind: "docker-script", label: `Docker: ${rel}`, command: `bash ${rel}`, confidence: 100 });
-    }
-  }
+  // Docker test shell scripts (preference order).
+  const dockerScriptFiles = [
+    "scripts/docker-test.sh",
+    "docker-test.sh",
+    "test-docker.sh",
+    "scripts/test-docker.sh",
+  ].filter((rel) => existsSync(path.join(dir, rel)));
 
-  // Read package.json scripts once.
+  // package.json scripts.
   let scripts: Record<string, string> = {};
   try {
     const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as {
@@ -463,43 +409,23 @@ async function detectTestRunners(entry: RepoConfigEntry): Promise<TestRunner[]> 
     /* no package.json */
   }
 
-  // 2. package.json script that shells into docker for tests.
-  for (const [name, body] of Object.entries(scripts)) {
-    if (/docker/i.test(body) && /test/i.test(`${name} ${body}`)) {
-      add({ kind: "docker-script", label: `Docker (npm): ${name}`, command: `npm run ${name}`, confidence: 90 });
-    }
-  }
+  // Ecosystem marker files.
+  const ecoFiles = ["go.mod", "Cargo.toml", "pytest.ini", "pyproject.toml"].filter((f) =>
+    existsSync(path.join(dir, f)),
+  );
 
-  // 3. Plain npm test scripts.
-  const npmConf: Record<string, number> = { "test:ci": 65, test: 60, "test:unit": 55, "test:e2e": 50 };
-  for (const [name, confidence] of Object.entries(npmConf)) {
-    if (scripts[name]) add({ kind: "npm", label: `npm: ${name}`, command: `npm run ${name}`, confidence });
-  }
-
-  // 4. Other ecosystems (presence-based).
-  const eco: { file: string; label: string; command: string }[] = [
-    { file: "go.mod", label: "Go: go test ./...", command: "go test ./..." },
-    { file: "Cargo.toml", label: "Rust: cargo test", command: "cargo test" },
-    { file: "pytest.ini", label: "Python: pytest", command: "pytest" },
-    { file: "pyproject.toml", label: "Python: pytest", command: "pytest" },
-  ];
-  for (const e of eco) {
-    if (existsSync(path.join(dir, e.file))) {
-      add({ kind: "other", label: e.label, command: e.command, confidence: 40 });
-    }
-  }
+  // Makefile with a `test:` target.
+  let makefileHasTest = false;
   const makefile = path.join(dir, "Makefile");
   if (existsSync(makefile)) {
     try {
-      if (/^test\s*:/m.test(await readFile(makefile, "utf8"))) {
-        add({ kind: "other", label: "Make: make test", command: "make test", confidence: 45 });
-      }
+      makefileHasTest = /^test\s*:/m.test(await readFile(makefile, "utf8"));
     } catch {
       /* unreadable */
     }
   }
 
-  return runners.sort((a, b) => b.confidence - a.confidence);
+  return selectTestRunners({ dockerScriptFiles, scripts, ecoFiles, makefileHasTest });
 }
 
 // ── Version bump (Claude decides, applied to package.json) ─────────────────────
@@ -537,38 +463,12 @@ async function decideBump(from: string, stat: string, patch: string): Promise<Om
 }
 
 /** Increment the core semver of `v` per `bump` (prerelease/build suffixes are dropped). */
-function nextVersion(v: string, bump: BumpDecision["bump"]): string {
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v);
-  if (!m) throw new Error(`Cannot parse version "${v}"`);
-  let [major, minor, patch] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  if (bump === "major") (major += 1), (minor = 0), (patch = 0);
-  else if (bump === "minor") (minor += 1), (patch = 0);
-  else patch += 1;
-  return `${major}.${minor}.${patch}`;
-}
-
 /** Bump the `version` field in package.json with a targeted replace (preserves formatting). */
 async function applyBump(pkgPath: string, bump: BumpDecision["bump"]): Promise<{ from: string; to: string }> {
   const raw = await readFile(pkgPath, "utf8");
-  const m = /"version"\s*:\s*"([^"]+)"/.exec(raw);
-  if (!m) throw new Error('package.json has no "version" field');
-  const from = m[1];
-  const to = nextVersion(from, bump);
-  await writeFile(pkgPath, raw.replace(/("version"\s*:\s*")[^"]+(")/, `$1${to}$2`), "utf8");
+  const { from, to, text } = bumpVersionInPackageJson(raw, bump);
+  await writeFile(pkgPath, text, "utf8");
   return { from, to };
-}
-
-/** Friendly message for Anthropic auth failures (same wording as the commit endpoint). */
-function authMessage(err: unknown): string {
-  const raw = (err as Error).message ?? "";
-  if (
-    err instanceof Anthropic.AuthenticationError ||
-    (err as { status?: number }).status === 401 ||
-    /authentication method|api[ _]?key|ANTHROPIC_API_KEY|credential/i.test(raw)
-  ) {
-    return "No Anthropic credentials found. Set ANTHROPIC_API_KEY (or run `ant auth login`) for the API server.";
-  }
-  return raw;
 }
 
 // ── Streaming release pipeline (tests → bump → commit → push) ──────────────────
@@ -671,6 +571,40 @@ const PIPELINE_ORDER: PipelineStep[] = ["tests", "commit", "merge", "bump", "pus
  * Release flow: tests + commit in the SELECTED worktree, then merge that branch into main,
  * bump the version in main, and push from main. Bump/push never run in the worktree.
  */
+/**
+ * Commits on `branch` not yet on `origin/<branch>`.
+ * Returns null when there's no `origin/<branch>` ref to compare against (never pushed),
+ * which callers treat as "there's something to publish".
+ */
+async function commitsAheadOfOrigin(dir: string, branch: string): Promise<number | null> {
+  const hasUpstream = await git(dir, [
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/remotes/origin/${branch}`,
+  ]);
+  if (hasUpstream === null) return null;
+  const out = await git(dir, ["rev-list", "--count", `origin/${branch}..${branch}`]);
+  return out === null ? 0 : Number(out) || 0;
+}
+
+/**
+ * The repository's canonical default branch (what feature branches merge into),
+ * independent of whichever branch happens to be checked out in the main worktree.
+ * Prefers the remote HEAD (origin/HEAD → e.g. "main"), then a local main/master,
+ * else falls back to `fallback` (preserving prior single-branch behavior).
+ */
+async function resolveDefaultBranch(dir: string, fallback: string): Promise<string> {
+  const originHead = await git(dir, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+  const localBranches = new Set<string>();
+  for (const candidate of ["main", "master"]) {
+    if ((await git(dir, ["rev-parse", "--verify", "--quiet", `refs/heads/${candidate}`])) !== null) {
+      localBranches.add(candidate);
+    }
+  }
+  return pickDefaultBranch(originHead, localBranches, fallback);
+}
+
 async function runPipeline(
   job: Job,
   entry: RepoConfigEntry,
@@ -703,9 +637,32 @@ async function runPipeline(
       return stop(false);
     }
     const mainDir = main.path;
+    const mainBranch = main.branch;
     const worktreeDir = (await resolveWorktreePath(entry, requestedWorktree)) ?? mainDir;
     const worktree = wts.find((w) => path.resolve(w.path) === path.resolve(worktreeDir)) ?? main;
     const onMain = path.resolve(worktreeDir) === path.resolve(mainDir);
+    // The branch feature work lands on — not necessarily the branch currently
+    // checked out in the main worktree (the user may have a feature branch
+    // checked out there directly).
+    const defaultBranch = await resolveDefaultBranch(mainDir, mainBranch);
+    const onDefaultBranch = worktree.branch === defaultBranch;
+
+    // Push main to origin — used by the normal flow AND the clean-tree fast path.
+    const pushMain = async (): Promise<boolean> => {
+      step("push", "running");
+      const remotes = await git(mainDir, ["remote"]);
+      if (!remotes || !remotes.split("\n").includes("origin")) {
+        step("push", "failed", "no 'origin' remote");
+        return false;
+      }
+      const pushed = await runGit(mainDir, ["push", "origin", defaultBranch]);
+      if (!pushed.ok) {
+        step("push", "failed", pushed.stderr || pushed.stdout);
+        return false;
+      }
+      step("push", "ok", `origin/${defaultBranch}`);
+      return true;
+    };
 
     // Diff feeding the bump decision (captured during the commit step).
     let bumpStat = "";
@@ -731,15 +688,35 @@ async function runPipeline(
     const statusText = (await git(worktreeDir, ["status", "--porcelain"])) ?? "";
     if (statusText.trim() === "") {
       step("commit", "skipped", "nothing to commit");
-      if (onMain) {
-        emit(job, { type: "log", text: "Working tree clean and on main — nothing to release.\n" });
+      if (onMain && onDefaultBranch) {
         step("merge", "skipped");
         step("bump", "skipped");
+        // On the default branch with a clean tree, but it may hold commits that were
+        // never pushed. If a push was requested, publish that snapshot instead of skipping.
+        const ahead = push ? await commitsAheadOfOrigin(mainDir, defaultBranch) : 0;
+        if (push && ahead !== 0) {
+          emit(job, {
+            type: "log",
+            text: `Working tree clean; ${
+              ahead === null
+                ? `'${defaultBranch}' not on origin yet`
+                : `${ahead} commit(s) ahead of origin/${defaultBranch}`
+            } — pushing.\n`,
+          });
+          return stop(await pushMain());
+        }
+        emit(job, {
+          type: "log",
+          text: push
+            ? `Working tree clean and up to date with origin/${defaultBranch} — nothing to release.\n`
+            : `Working tree clean on ${defaultBranch}; push disabled — nothing to release.\n`,
+        });
         step("push", "skipped");
         return stop(true);
       }
-      // Nothing new to commit, but the branch may be ahead of main — bump from that delta.
-      const range = `${main.branch}...${worktree.branch}`;
+      // A feature branch (checked out in the main worktree or a separate one) with
+      // nothing new to commit — release its delta against the default branch.
+      const range = `${defaultBranch}...${worktree.branch}`;
       bumpStat = (await git(worktreeDir, ["diff", range, "--stat"])) ?? "";
       bumpPatch = (await git(worktreeDir, ["diff", range])) ?? "";
     } else {
@@ -770,9 +747,9 @@ async function runPipeline(
       }
     }
 
-    // 3) MERGE — the worktree branch into main
-    if (onMain) {
-      step("merge", "skipped", "already on main");
+    // 3) MERGE — the release branch into the default branch (in the main worktree)
+    if (onDefaultBranch) {
+      step("merge", "skipped", `already on ${defaultBranch}`);
     } else {
       step("merge", "running");
       if (!worktree.branch) {
@@ -780,25 +757,36 @@ async function runPipeline(
         skipFrom("bump");
         return stop(false);
       }
+      // The main worktree must be clean before we switch/merge in it.
       const dirty = await git(mainDir, ["status", "--porcelain"]);
       if (dirty && dirty.length > 0) {
         emit(job, {
           type: "log",
-          text: `main ('${main.branch}') has uncommitted changes — refusing to merge:\n${dirty}\n`,
+          text: `main worktree ('${mainBranch}') has uncommitted changes — refusing to merge:\n${dirty}\n`,
         });
-        step("merge", "failed", `main ('${main.branch}') is dirty`);
+        step("merge", "failed", `main worktree ('${mainBranch}') is dirty`);
         skipFrom("bump");
         return stop(false);
+      }
+      // The release branch may be checked out directly in the main worktree; switch
+      // it to the default branch before merging into it.
+      if (mainBranch !== defaultBranch) {
+        const co = await runGit(mainDir, ["checkout", defaultBranch]);
+        if (!co.ok) {
+          step("merge", "failed", `could not checkout '${defaultBranch}' — ${co.stderr || co.stdout}`);
+          skipFrom("bump");
+          return stop(false);
+        }
       }
       const merged = await runGit(mainDir, ["merge", "--no-edit", worktree.branch]);
       if (!merged.ok) {
-        // Log the abort's output too, then leave main untouched.
+        // Log the abort's output too, then leave the default branch untouched.
         await runGit(mainDir, ["merge", "--abort"]);
-        step("merge", "failed", "merge failed (see log) — aborted, main unchanged");
+        step("merge", "failed", "merge failed (see log) — aborted, default branch unchanged");
         skipFrom("bump");
         return stop(false);
       }
-      step("merge", "ok", `${worktree.branch} → ${main.branch}`);
+      step("merge", "ok", `${worktree.branch} → ${defaultBranch}`);
     }
 
     // 4) BUMP — in main (Claude decides), committed as "chore: bump version to X"
@@ -839,19 +827,7 @@ async function runPipeline(
       step("push", "skipped");
       return stop(true);
     }
-    step("push", "running");
-    const remotes = await git(mainDir, ["remote"]);
-    if (!remotes || !remotes.split("\n").includes("origin")) {
-      step("push", "failed", "no 'origin' remote");
-      return stop(false);
-    }
-    const pushed = await runGit(mainDir, ["push", "origin", main.branch]);
-    if (!pushed.ok) {
-      step("push", "failed", pushed.stderr || pushed.stdout);
-      return stop(false);
-    }
-    step("push", "ok", `origin/${main.branch}`);
-    return stop(true);
+    return stop(await pushMain());
   } catch (err) {
     emit(job, { type: "error", message: (err as Error).message });
     finishJob(job, "error");
