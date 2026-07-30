@@ -26,6 +26,31 @@
       "id": "linkedin",
       "name": "linkedin",
       "path": "/home/mpb/Documents/GitHub/linkedin"
+    },
+    {
+      "id": "bessa-patterns-ts",
+      "name": "bessa_patterns.ts",
+      "path": "/home/mpb/Documents/GitHub/bessa_patterns.ts"
+    },
+    {
+      "id": "ibira-js",
+      "name": "ibira.js",
+      "path": "/home/mpb/Documents/GitHub/ibira.js"
+    },
+    {
+      "id": "guia-js",
+      "name": "guia_js",
+      "path": "/home/mpb/Documents/GitHub/guia_js"
+    },
+    {
+      "id": "olinda-graphics-terminal",
+      "name": "olinda_graphics_terminal",
+      "path": "/home/mpb/Documents/GitHub/olinda_graphics_terminal"
+    },
+    {
+      "id": "sampa-graphics-terminal",
+      "name": "sampa_graphics_terminal",
+      "path": "/home/mpb/Documents/GitHub/sampa_graphics_terminal"
     }
   ],
   "selectedId": "agentic-session-manager",

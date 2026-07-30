@@ -15,8 +15,12 @@ import {
   syncWorktreeFromMain,
   fetchCommitDetail,
   fetchGraph,
+  fetchCompare,
   checkoutRef,
   createWorktree,
+  removeWorktree,
+  deleteBranch,
+  mergeBranch,
   execCommand,
 } from './api';
 import { toRepository, logToCommits, worktreesToView, avatarFor } from './adapters';
@@ -25,6 +29,7 @@ import Header from './components/Header';
 import ChangesView from './components/ChangesView';
 import HistoryView from './components/HistoryView';
 import WorktreesView from './components/WorktreesView';
+import CompareView from './components/CompareView';
 import ReleaseView from './components/ReleaseView';
 import SettingsView from './components/SettingsView';
 import TerminalDrawer from './components/TerminalDrawer';
@@ -35,7 +40,7 @@ const EMPTY_REPO: Repository = { id: '', name: 'No repository', activeBranch: 'â
 type ToastType = 'success' | 'warning' | 'info';
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'changes' | 'history' | 'worktrees' | 'release' | 'settings'>('history');
+  const [activeView, setActiveView] = useState<'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings'>('history');
 
   // Server-owned state (source of truth = the API; no localStorage).
   const [repositories, setRepositories] = useState<Repository[]>([]);
@@ -192,6 +197,36 @@ export default function App() {
     [activeRepo.id, selectedWorktree],
   );
 
+  // Fetch the branch/worktree divergence matrix (Compare tab).
+  const handleLoadCompare = useCallback(
+    (base?: string) => fetchCompare(activeRepo.id, base),
+    [activeRepo.id],
+  );
+
+  // Remove a fully-merged, clean worktree (Compare tab prune action).
+  const handlePruneWorktree = useCallback(
+    (path: string) => removeWorktree(activeRepo.id, path),
+    [activeRepo.id],
+  );
+
+  // Delete a fully-merged local branch (Compare tab prune action).
+  const handleDeleteBranch = useCallback(
+    (branch: string) => deleteBranch(activeRepo.id, branch),
+    [activeRepo.id],
+  );
+
+  // Merge a branch into the base (Compare tab merge action).
+  const handleMergeBranch = useCallback(
+    (branch: string, into: string) => mergeBranch(activeRepo.id, branch, into),
+    [activeRepo.id],
+  );
+
+  // Check out a ref in the main working tree (Compare tab "checkout main" action).
+  const handleCompareCheckout = useCallback(
+    (ref: string) => checkoutRef(activeRepo.id, ref, null),
+    [activeRepo.id],
+  );
+
   // Fetch a commit's full detail (files + diff) for the History inspector.
   const loadCommit = useCallback(
     (hash: string) => fetchCommitDetail(activeRepo.id, hash, selectedWorktree),
@@ -337,6 +372,16 @@ export default function App() {
               onMerge={handleMergeWorktree}
               onSync={handleSyncWorktree}
               onRefresh={handleSyncRepo}
+            />
+          )}
+          {activeView === 'compare' && (
+            <CompareView
+              repoName={activeRepo.name}
+              onLoadCompare={handleLoadCompare}
+              onPrune={handlePruneWorktree}
+              onDeleteBranch={handleDeleteBranch}
+              onMergeBranch={handleMergeBranch}
+              onCheckout={handleCompareCheckout}
             />
           )}
           {activeView === 'release' && (

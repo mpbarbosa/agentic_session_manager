@@ -36,6 +36,45 @@ export interface Repo extends RepoConfigEntry {
   status: RepoStatus;
 }
 
+/** One branch/worktree compared against a base ref (GET /api/repos/:id/compare). */
+export interface CompareRow {
+  /** The ref compared — a branch name, or a short hash for a detached worktree HEAD. */
+  ref: string;
+  /** Display label — branch name, or the worktree basename when detached. */
+  name: string;
+  /** Branch name, or null when this row is a detached worktree HEAD. */
+  branch: string | null;
+  /** Short hash of the ref's tip. */
+  head: string;
+  /** Path of the worktree this ref is checked out in, or null (branch only). */
+  worktree: string | null;
+  isMain: boolean;
+  detached: boolean;
+  /** Uncommitted changes in the worktree (only meaningful when worktree != null). */
+  dirty: boolean;
+  /** Commits on this ref not on the base (what merging it in would bring). */
+  ahead: number;
+  /** Commits on the base not on this ref (how stale it is). */
+  behind: number;
+  /** Short hash of the common ancestor with the base. */
+  mergeBase: string;
+  /** Last commit subject on this ref. */
+  subject: string;
+  relativeDate: string;
+  /** The ahead-commits (ref not on base), capped. */
+  unique: { hash: string; subject: string; relativeDate: string }[];
+}
+
+/**
+ * Divergence of all local branches + detached worktree HEADs against a base
+ * (GET /api/repos/:id/compare). Rows that are checked out in a worktree carry its
+ * path + dirty flag; the base defaults to the main tree's branch.
+ */
+export interface CompareResult {
+  base: string;
+  rows: CompareRow[];
+}
+
 /** Server/runtime health (GET /api/health). */
 export interface HealthInfo {
   /** Node.js version, e.g. "v22.3.0". */
@@ -211,7 +250,7 @@ export interface BumpDecision {
 }
 
 /** A step of the release pipeline (in order). */
-export type PipelineStep = "tests" | "commit" | "merge" | "bump" | "push";
+export type PipelineStep = "tests" | "commit" | "merge" | "bump" | "push" | "deploy";
 export type StepStatus = "pending" | "running" | "ok" | "failed" | "skipped";
 
 /** An event streamed from the pipeline SSE endpoint. */

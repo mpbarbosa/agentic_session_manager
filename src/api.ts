@@ -3,6 +3,7 @@ import type {
   CheckoutResult,
   Commit,
   CommitDetail,
+  CompareResult,
   CreateWorktreeResult,
   DiffFile,
   GitStatusDetail,
@@ -12,6 +13,12 @@ import type {
   TestRunner,
   Worktree,
 } from "../shared/types.ts";
+
+/** Divergence of all branches/worktrees against a base ref (default: main). */
+export function fetchCompare(id: string, base?: string): Promise<CompareResult> {
+  const qs = base ? `?base=${encodeURIComponent(base)}` : "";
+  return request<CompareResult>(`/api/repos/${encodeURIComponent(id)}/compare${qs}`);
+}
 
 export function fetchHealth(): Promise<HealthInfo> {
   return request<HealthInfo>("/api/health");
@@ -91,6 +98,43 @@ export function createWorktree(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(opts),
   });
+}
+
+/** Remove (prune) a linked worktree via `git worktree remove`. */
+export function removeWorktree(id: string, path: string): Promise<{ ok: boolean; path: string }> {
+  return request<{ ok: boolean; path: string }>(
+    `/api/repos/${encodeURIComponent(id)}/prune-worktree`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    },
+  );
+}
+
+/** Merge one local branch into another (`into` need not be checked out anywhere). */
+export function mergeBranch(
+  id: string,
+  branch: string,
+  into: string,
+): Promise<{ ok: boolean; source: string; target: string; alreadyUpToDate: boolean }> {
+  return request(`/api/repos/${encodeURIComponent(id)}/merge-branch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ branch, into }),
+  });
+}
+
+/** Delete a fully-merged local branch via `git branch -d`. */
+export function deleteBranch(id: string, branch: string): Promise<{ ok: boolean; branch: string }> {
+  return request<{ ok: boolean; branch: string }>(
+    `/api/repos/${encodeURIComponent(id)}/delete-branch`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch }),
+    },
+  );
 }
 
 export type GraphStyle = "plain" | "pretty" | "forest";
@@ -202,9 +246,17 @@ export async function fetchTestRunners(id: string): Promise<TestRunner[]> {
   return data.runners;
 }
 
+/** Detected deploy commands (npm deploy/release/publish scripts, scripts/deploy.sh, platform configs). */
+export async function fetchDeployRunners(id: string): Promise<TestRunner[]> {
+  const data = await request<{ runners: TestRunner[] }>(
+    `/api/repos/${encodeURIComponent(id)}/deploy-runners`,
+  );
+  return data.runners;
+}
+
 export async function startPipeline(
   id: string,
-  opts: { command: string; push: boolean; worktree: string | null },
+  opts: { command: string; push: boolean; worktree: string | null; deploy?: string },
 ): Promise<string> {
   const data = await request<{ jobId: string }>(`/api/repos/${encodeURIComponent(id)}/pipeline`, {
     method: "POST",

@@ -25,6 +25,7 @@ import type {
   Commit,
   CommitDetail,
   CommitFile,
+  CompareRow,
   DiffFile,
   DiffLine,
   FileChange,
@@ -428,6 +429,51 @@ async function detectTestRunners(entry: RepoConfigEntry): Promise<TestRunner[]> 
   return selectTestRunners({ dockerScriptFiles, scripts, ecoFiles, makefileHasTest });
 }
 
+// ── Deploy-command detection ───────────────────────────────────────────────────
+// Detect a repo's deploy command so the Release view doesn't default to a guaranteed-miss
+// (e.g. `npm run deploy` on a repo without that script). Empty = the deploy step is skipped.
+async function detectDeployRunners(entry: RepoConfigEntry): Promise<TestRunner[]> {
+  const dir = entry.path;
+  if (!dir) return [];
+  const runners: TestRunner[] = [];
+  const add = (kind: TestRunner["kind"], label: string, command: string, confidence: number) =>
+    runners.push({ id: `d${runners.length}`, kind, label, command, confidence });
+
+  // package.json scripts that look like a deploy/release/publish.
+  try {
+    const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+    const preferred = ["deploy", "deploy:prod", "deploy:production", "release", "publish", "ship"];
+    for (const name of Object.keys(pkg.scripts ?? {})) {
+      if (/^(deploy|release|publish|ship)(:|$)/i.test(name)) {
+        const rank = preferred.indexOf(name);
+        add("npm", `npm: ${name}`, `npm run ${name}`, rank >= 0 ? 100 - rank : 60);
+      }
+    }
+  } catch {
+    /* no package.json */
+  }
+
+  // Shell deploy scripts.
+  for (const rel of ["scripts/deploy.sh", "deploy.sh"]) {
+    if (existsSync(path.join(dir, rel))) add("other", `script: ${rel}`, `bash ${rel}`, 90);
+  }
+
+  // Platform config files → their canonical deploy command.
+  const platforms: [string[], string, string][] = [
+    [["fly.toml"], "Fly.io", "fly deploy"],
+    [["vercel.json", ".vercel"], "Vercel", "vercel --prod"],
+    [["netlify.toml"], "Netlify", "netlify deploy --prod"],
+    [["wrangler.toml", "wrangler.jsonc", "wrangler.json"], "Cloudflare", "wrangler deploy"],
+  ];
+  for (const [files, label, command] of platforms) {
+    if (files.some((f) => existsSync(path.join(dir, f)))) add("other", label, command, 70);
+  }
+
+  return runners.sort((a, b) => b.confidence - a.confidence);
+}
+
 // ── Version bump (Claude decides, applied to package.json) ─────────────────────
 const BUMP_SYSTEM =
   "You are a release assistant. Given a git diff, decide the Semantic Versioning bump: " +
@@ -565,7 +611,7 @@ function runStreamed(job: Job, command: string, cwd: string): Promise<number> {
   });
 }
 
-const PIPELINE_ORDER: PipelineStep[] = ["tests", "commit", "merge", "bump", "push"];
+const PIPELINE_ORDER: PipelineStep[] = ["tests", "commit", "merge", "bump", "push", "deploy"];
 
 /**
  * Release flow: tests + commit in the SELECTED worktree, then merge that branch into main,
@@ -611,6 +657,7 @@ async function runPipeline(
   requestedWorktree: unknown,
   command: string,
   push: boolean,
+  deployCommand: string,
 ): Promise<void> {
   const step = (s: PipelineStep, status: StepStatus, detail?: string) =>
     emit(job, { type: "step", step: s, status, detail });
@@ -664,6 +711,29 @@ async function runPipeline(
       return true;
     };
 
+    // Deploy — the final step. Runs the deploy command in main (streamed, cancellable, env
+    // sanitized like the test step). Skipped when no deploy command was provided. RCE by design.
+    const deployStep = async (): Promise<boolean> => {
+      const cmd = deployCommand.trim();
+      if (!cmd) {
+        step("deploy", "skipped");
+        return true;
+      }
+      step("deploy", "running");
+      emit(job, { type: "log", text: `[deploy in ${defaultBranch}] $ ${cmd}\n` });
+      const code = await runStreamed(job, cmd, mainDir);
+      if (job.cancelled) {
+        step("deploy", "failed", "cancelled");
+        return false;
+      }
+      if (code !== 0) {
+        step("deploy", "failed", `exit ${code}`);
+        return false;
+      }
+      step("deploy", "ok");
+      return true;
+    };
+
     // Diff feeding the bump decision (captured during the commit step).
     let bumpStat = "";
     let bumpPatch = "";
@@ -703,16 +773,17 @@ async function runPipeline(
                 : `${ahead} commit(s) ahead of origin/${defaultBranch}`
             } — pushing.\n`,
           });
-          return stop(await pushMain());
+          if (!(await pushMain())) return stop(false);
+          return stop(await deployStep());
         }
         emit(job, {
           type: "log",
           text: push
-            ? `Working tree clean and up to date with origin/${defaultBranch} — nothing to release.\n`
-            : `Working tree clean on ${defaultBranch}; push disabled — nothing to release.\n`,
+            ? `Working tree clean and up to date with origin/${defaultBranch} — nothing new to release.\n`
+            : `Working tree clean on ${defaultBranch}; push disabled.\n`,
         });
         step("push", "skipped");
-        return stop(true);
+        return stop(await deployStep());
       }
       // A feature branch (checked out in the main worktree or a separate one) with
       // nothing new to commit — release its delta against the default branch.
@@ -825,9 +896,12 @@ async function runPipeline(
     // 5) PUSH — from main
     if (!push) {
       step("push", "skipped");
-      return stop(true);
+    } else if (!(await pushMain())) {
+      return stop(false);
     }
-    return stop(await pushMain());
+
+    // 6) DEPLOY — from main (runs the deploy command; skipped when none was provided)
+    return stop(await deployStep());
   } catch (err) {
     emit(job, { type: "error", message: (err as Error).message });
     finishJob(job, "error");
@@ -1067,6 +1141,102 @@ app.get("/api/repos/:id/worktrees", async (req, res) => {
   }
 });
 
+// Divergence of every worktree/branch against a base ref (default: the main tree's branch).
+// Read-only: ahead/behind counts, merge-base, dirty flag, and each ref's unique (ahead) commits.
+app.get("/api/repos/:id/compare", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    if (!entry.path) {
+      res.json({ base: "", rows: [] });
+      return;
+    }
+    const dir = entry.path;
+    const wts = await readWorktrees(entry);
+    const mainBranch = wts.find((w) => w.isMain)?.branch ?? "HEAD";
+
+    // Base: ?base= (allowlisted, must resolve to a commit) or the main branch.
+    const requested = typeof req.query.base === "string" ? req.query.base : "";
+    let base = requested && !requested.startsWith("-") && /^[\w./~^{}@-]+$/.test(requested)
+      ? requested
+      : mainBranch;
+    if ((await git(dir, ["rev-parse", "--verify", "--quiet", `${base}^{commit}`])) === null) {
+      base = mainBranch;
+    }
+
+    // Every local branch + each detached worktree HEAD, annotated with its worktree (if any).
+    const wtByBranch = new Map<string, Worktree>();
+    const detached: Worktree[] = [];
+    for (const w of wts) {
+      if (w.branch) wtByBranch.set(w.branch, w);
+      else if (w.head) detached.push(w);
+    }
+    const branches = ((await git(dir, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])) ?? "")
+      .split("\n")
+      .filter(Boolean);
+    const items: { ref: string; name: string; branch: string | null; wt: Worktree | null; detached: boolean }[] = [
+      ...branches.map((b) => ({ ref: b, name: b, branch: b, wt: wtByBranch.get(b) ?? null, detached: false })),
+      ...detached.map((w) => ({ ref: w.head as string, name: path.basename(w.path), branch: null, wt: w, detached: true })),
+    ];
+
+    const rows: CompareRow[] = [];
+    for (const it of items) {
+      const counts = (await git(dir, ["rev-list", "--left-right", "--count", `${base}...${it.ref}`])) ?? "0\t0";
+      const [behind, ahead] = counts.split(/\s+/).map((n) => Number(n) || 0);
+      const mergeBase = (await git(dir, ["merge-base", base, it.ref])) ?? "";
+      const head = (await git(dir, ["rev-parse", "--short", it.ref])) ?? "";
+      const last = (await git(dir, ["log", "-1", `--format=%s${LOG_SEP}%ar`, it.ref])) ?? "";
+      const [subject = "", relativeDate = ""] = last.split(LOG_SEP);
+      const uniqueRaw =
+        ahead > 0
+          ? (await git(dir, ["log", `--format=%h${LOG_SEP}%s${LOG_SEP}%ar`, "-n50", `${base}..${it.ref}`])) ?? ""
+          : "";
+      const unique = uniqueRaw
+        ? uniqueRaw.split("\n").filter(Boolean).map((l) => {
+            const [hash, s = "", r = ""] = l.split(LOG_SEP);
+            return { hash, subject: s, relativeDate: r };
+          })
+        : [];
+      let dirty = false;
+      if (it.wt) {
+        const status = await git(it.wt.path, ["status", "--porcelain"]);
+        dirty = !!(status && status.length > 0);
+      }
+      rows.push({
+        ref: it.ref,
+        name: it.name,
+        branch: it.branch,
+        head,
+        worktree: it.wt?.path ?? null,
+        isMain: it.wt?.isMain ?? it.branch === mainBranch,
+        detached: it.detached,
+        dirty,
+        ahead,
+        behind,
+        mergeBase: mergeBase.slice(0, 7),
+        subject,
+        relativeDate,
+        unique,
+      });
+    }
+    // Main first, then most-divergent (ahead) first, then most-behind, then name.
+    rows.sort(
+      (a, b) =>
+        Number(b.isMain) - Number(a.isMain) ||
+        b.ahead - a.ahead ||
+        b.behind - a.behind ||
+        a.name.localeCompare(b.name),
+    );
+    res.json({ base, rows });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // Full detail (metadata + per-file stats + parsed diff) for one commit. Honors ?worktree=.
 app.get("/api/repos/:id/commit/:hash", async (req, res) => {
   try {
@@ -1149,6 +1319,169 @@ app.post("/api/repos/:id/worktrees", async (req, res) => {
       return;
     }
     res.json({ ok: true, path: wtPath, branch });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Remove (prune) a linked worktree via `git worktree remove`. Body: { path }.
+// Validated against the repo's worktrees; refuses the main tree; NO --force, so git itself
+// refuses if the tree has uncommitted changes. The branch/commits are untouched.
+app.post("/api/repos/:id/prune-worktree", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry?.path) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    const requested: unknown = req.body?.path;
+    if (typeof requested !== "string" || requested === "") {
+      res.status(400).json({ error: "Body must include the worktree 'path'" });
+      return;
+    }
+    const wts = await readWorktrees(entry);
+    const target = path.resolve(requested);
+    const match = wts.find((w) => path.resolve(w.path) === target);
+    if (!match) {
+      res.status(404).json({ error: "That path is not a worktree of this repo" });
+      return;
+    }
+    if (match.isMain) {
+      res.status(400).json({ error: "Refusing to remove the main working tree" });
+      return;
+    }
+    const removed = await gitExec(entry.path, ["worktree", "remove", match.path]);
+    if (!removed.ok) {
+      res.status(409).json({ error: removed.stderr || removed.stdout || "git worktree remove failed" });
+      return;
+    }
+    res.json({ ok: true, path: match.path });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Delete a fully-merged local branch via `git branch -d` (safe delete). Body: { branch }.
+// -d (not -D) so git itself refuses to delete a branch that isn't merged into HEAD/upstream,
+// and refuses one that's checked out in a worktree. Never touches the main branch.
+app.post("/api/repos/:id/delete-branch", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry?.path) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    const branch: unknown = req.body?.branch;
+    if (typeof branch !== "string" || branch === "" || branch.startsWith("-") || !/^[\w./-]+$/.test(branch)) {
+      res.status(400).json({ error: "Body must include a valid 'branch'" });
+      return;
+    }
+    const wts = await readWorktrees(entry);
+    const mainBranch = wts.find((w) => w.isMain)?.branch;
+    if (branch === mainBranch) {
+      res.status(400).json({ error: "Refusing to delete the main branch" });
+      return;
+    }
+    const del = await gitExec(entry.path, ["branch", "-d", branch]);
+    if (!del.ok) {
+      // git -d refuses unmerged branches and branches checked out in a worktree.
+      res.status(409).json({ error: del.stderr || del.stdout || "git branch -d failed" });
+      return;
+    }
+    res.json({ ok: true, branch });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Merge one local branch into another. Body: { branch, into }. Works even when `into` is not
+// checked out anywhere: if it is (a worktree), merge there (refuse dirty, abort on conflict);
+// otherwise merge in a **throwaway worktree** so the user's working tree is never touched.
+app.post("/api/repos/:id/merge-branch", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry?.path) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    const valid = (b: unknown): b is string =>
+      typeof b === "string" && b !== "" && !b.startsWith("-") && /^[\w./-]+$/.test(b);
+    const branch = req.body?.branch;
+    const into = req.body?.into;
+    if (!valid(branch) || !valid(into)) {
+      res.status(400).json({ error: "Body must include valid 'branch' and 'into' names" });
+      return;
+    }
+    if (branch === into) {
+      res.status(400).json({ error: "Cannot merge a branch into itself" });
+      return;
+    }
+    for (const b of [branch, into]) {
+      if ((await git(entry.path, ["rev-parse", "--verify", "--quiet", `refs/heads/${b}`])) === null) {
+        res.status(404).json({ error: `No local branch '${b}'` });
+        return;
+      }
+    }
+
+    const wts = await readWorktrees(entry);
+    const target = wts.find((w) => w.branch === into);
+
+    // Case A: `into` is checked out in a worktree — merge there.
+    if (target) {
+      const dirty = await git(target.path, ["status", "--porcelain"]);
+      if (dirty && dirty.length > 0) {
+        res.status(409).json({
+          error: `'${into}' is checked out at ${target.path} and has uncommitted changes. Commit or stash them first.`,
+        });
+        return;
+      }
+      const merge = await gitExec(target.path, ["merge", "--no-edit", branch]);
+      if (!merge.ok) {
+        await gitExec(target.path, ["merge", "--abort"]);
+        res.status(409).json({
+          error: `Merge of '${branch}' into '${into}' failed (likely conflicts) — aborted, '${into}' unchanged.`,
+          detail: merge.stdout || merge.stderr,
+        });
+        return;
+      }
+      res.json({
+        ok: true,
+        source: branch,
+        target: into,
+        alreadyUpToDate: /already up to date/i.test(merge.stdout),
+      });
+      return;
+    }
+
+    // Case B: `into` isn't checked out — merge in a throwaway worktree (handles FF + merge commits).
+    const tmp = path.join(os.tmpdir(), `sm-merge-${crypto.randomUUID()}`);
+    const added = await gitExec(entry.path, ["worktree", "add", tmp, into]);
+    if (!added.ok) {
+      res.status(409).json({ error: added.stderr || added.stdout || "could not stage the merge" });
+      return;
+    }
+    try {
+      const merge = await gitExec(tmp, ["merge", "--no-edit", branch]);
+      if (!merge.ok) {
+        await gitExec(tmp, ["merge", "--abort"]);
+        res.status(409).json({
+          error: `Merge of '${branch}' into '${into}' failed (likely conflicts) — aborted, '${into}' unchanged.`,
+          detail: merge.stdout || merge.stderr,
+        });
+        return;
+      }
+      res.json({
+        ok: true,
+        source: branch,
+        target: into,
+        alreadyUpToDate: /already up to date/i.test(merge.stdout),
+      });
+    } finally {
+      await gitExec(entry.path, ["worktree", "remove", "--force", tmp]);
+    }
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1299,6 +1632,20 @@ app.get("/api/repos/:id/test-runners", async (req, res) => {
   }
 });
 
+app.get("/api/repos/:id/deploy-runners", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    res.json({ runners: await detectDeployRunners(entry) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // Start the release pipeline (tests → bump → commit → push) on the main working tree.
 // Body: { command: string, push?: boolean }. The command is user-confirmed (arbitrary local exec).
 app.post("/api/repos/:id/pipeline", async (req, res) => {
@@ -1319,6 +1666,7 @@ app.post("/api/repos/:id/pipeline", async (req, res) => {
       return;
     }
     const push = req.body?.push !== false; // default true
+    const deploy = typeof req.body?.deploy === "string" ? req.body.deploy.trim() : "";
 
     const job: Job = {
       id: crypto.randomUUID(),
@@ -1330,7 +1678,7 @@ app.post("/api/repos/:id/pipeline", async (req, res) => {
       cancelled: false,
     };
     jobs.set(job.id, job);
-    void runPipeline(job, entry, req.body?.worktree, command, push);
+    void runPipeline(job, entry, req.body?.worktree, command, push, deploy);
     res.status(201).json({ jobId: job.id });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

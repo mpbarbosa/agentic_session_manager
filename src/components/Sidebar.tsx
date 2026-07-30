@@ -3,9 +3,10 @@ import {
   Database, 
   RefreshCw, 
   FileCode, 
-  History, 
-  GitBranch, 
-  Rocket, 
+  History,
+  GitBranch,
+  GitCompare,
+  Rocket,
   Terminal, 
   Settings, 
   ChevronDown,
@@ -15,8 +16,8 @@ import {
 import { useState } from 'react';
 
 interface SidebarProps {
-  activeView: 'changes' | 'history' | 'worktrees' | 'release' | 'settings';
-  setActiveView: (view: 'changes' | 'history' | 'worktrees' | 'release' | 'settings') => void;
+  activeView: 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings';
+  setActiveView: (view: 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings') => void;
   repositories: Repository[];
   activeRepo: Repository;
   setActiveRepo: (repo: Repository) => void;
@@ -133,6 +134,18 @@ export default function Sidebar({
         >
           <GitBranch className="w-4 h-4 shrink-0" />
           <span>Worktrees</span>
+        </button>
+
+        <button
+          onClick={() => setActiveView('compare')}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all duration-150 rounded font-mono text-xs text-left ${
+            activeView === 'compare'
+              ? 'bg-surface-container-high text-primary border-l-4 border-primary font-bold'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest'
+          }`}
+        >
+          <GitCompare className="w-4 h-4 shrink-0" />
+          <span>Compare</span>
         </button>
 
         <button

@@ -3,6 +3,7 @@ import type { PipelineEvent, PipelineStep, StepStatus, TestRunner } from '../../
 import {
   cancelPipeline,
   fetchTestRunners,
+  fetchDeployRunners,
   pipelineStreamUrl,
   startPipeline,
 } from '../api';
@@ -32,6 +33,7 @@ const STEPS: { key: PipelineStep; label: string }[] = [
   { key: 'merge', label: 'Merge' },
   { key: 'bump', label: 'Bump' },
   { key: 'push', label: 'Push' },
+  { key: 'deploy', label: 'Deploy' },
 ];
 
 const emptySteps = (): Record<PipelineStep, StepStatus> => ({
@@ -40,12 +42,16 @@ const emptySteps = (): Record<PipelineStep, StepStatus> => ({
   merge: 'pending',
   bump: 'pending',
   push: 'pending',
+  deploy: 'pending',
 });
 
 export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseViewProps) {
   const [runners, setRunners] = useState<TestRunner[]>([]);
   const [command, setCommand] = useState('');
   const [push, setPush] = useState(true);
+  const [deployEnabled, setDeployEnabled] = useState(false);
+  const [deployCommand, setDeployCommand] = useState('');
+  const [deployRunners, setDeployRunners] = useState<TestRunner[]>([]);
 
   const [running, setRunning] = useState(false);
   const [steps, setSteps] = useState<Record<PipelineStep, StepStatus>>(emptySteps);
@@ -66,7 +72,7 @@ export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseView
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [log]);
 
-  // Detect runners on repo change; default the command to the strongest candidate.
+  // Detect test + deploy runners on repo change; default each command to the strongest candidate.
   useEffect(() => {
     if (!repoId) return;
     let cancelled = false;
@@ -77,6 +83,13 @@ export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseView
         setCommand((c) => c || rs[0]?.command || '');
       })
       .catch((err) => !cancelled && setError((err as Error).message));
+    fetchDeployRunners(repoId)
+      .then((ds) => {
+        if (cancelled) return;
+        setDeployRunners(ds);
+        setDeployCommand((c) => c || ds[0]?.command || '');
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -93,6 +106,7 @@ export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseView
   const run = useCallback(async () => {
     const cmd = command.trim();
     if (!cmd || !repoId) return;
+    const deploy = deployEnabled ? deployCommand.trim() : '';
     if (
       !window.confirm(
         `Run the release pipeline?\n\n` +
@@ -100,8 +114,9 @@ export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseView
           `2. AI commit in the worktree\n` +
           `3. Merge into main\n` +
           `4. Bump package.json in main (Claude decides major/minor/patch)\n` +
-          `5. ${push ? 'Push main to origin' : '(skip push)'}\n\n` +
-          `Step 1 executes this command locally.`,
+          `5. ${push ? 'Push main to origin' : '(skip push)'}\n` +
+          `6. ${deploy ? `Deploy from main:  ${deploy}` : '(skip deploy)'}\n\n` +
+          `Steps 1 and 6 execute their commands locally.`,
       )
     ) {
       return;
@@ -112,7 +127,7 @@ export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseView
     setDetails({});
     setLog('');
     try {
-      const jobId = await startPipeline(repoId, { command: cmd, push, worktree });
+      const jobId = await startPipeline(repoId, { command: cmd, push, worktree, deploy });
       jobRef.current = jobId;
       const es = new EventSource(pipelineStreamUrl(repoId, jobId));
       esRef.current = es;
@@ -142,7 +157,7 @@ export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseView
       setError((err as Error).message);
       setRunning(false);
     }
-  }, [command, push, worktree, repoId, where, onRefresh]);
+  }, [command, push, deployEnabled, deployCommand, worktree, repoId, where, onRefresh]);
 
   const stop = useCallback(() => {
     if (jobRef.current) void cancelPipeline(repoId, jobRef.current).catch(() => {});
@@ -168,7 +183,7 @@ export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseView
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-secondary" />
             <span className="text-secondary font-bold">
-              Tests run in <span className="text-on-surface">{where}</span>; commit → merge → bump → push land on main
+              Tests run in <span className="text-on-surface">{where}</span>; commit → merge → bump → push → deploy land on main
             </span>
           </div>
           <span className="text-outline">
@@ -257,12 +272,72 @@ export default function ReleaseView({ repoId, worktree, onRefresh }: ReleaseView
               </button>
             )}
           </div>
+
+          {/* Deploy row — opt-in command that runs from main after push */}
+          <div className="mt-4 pt-4 border-t border-outline-variant flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 px-1 shrink-0 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deployEnabled}
+                onChange={(e) => setDeployEnabled(e.target.checked)}
+                disabled={running}
+                className="rounded border-outline-variant bg-surface text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+              />
+              <span className="text-xs text-on-surface font-mono select-none">Deploy after push</span>
+            </label>
+
+            {/* Detected deploy runner */}
+            <div className="flex flex-col gap-1 text-xs shrink-0">
+              <label className="text-outline font-bold text-[9px] uppercase font-mono px-1">Detected</label>
+              <select
+                value={deployRunners.find((r) => r.command === deployCommand)?.id ?? ''}
+                onChange={(e) => {
+                  const r = deployRunners.find((x) => x.id === e.target.value);
+                  if (r) setDeployCommand(r.command);
+                }}
+                disabled={running || !deployEnabled}
+                className="bg-surface-container-lowest border border-outline-variant rounded px-3 py-1.5 min-w-[160px] text-xs font-mono text-on-surface focus:border-primary focus:ring-0 cursor-pointer disabled:opacity-60"
+              >
+                {deployRunners.length === 0 && <option value="">no deploy command detected</option>}
+                {deployRunners.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+                {deployCommand && !deployRunners.some((r) => r.command === deployCommand) && (
+                  <option value="">custom</option>
+                )}
+              </select>
+            </div>
+
+            <div className="flex-1 flex flex-col gap-1 text-xs min-w-[240px]">
+              <label className="text-outline font-bold text-[9px] uppercase font-mono px-1">
+                Deploy command (runs in main)
+              </label>
+              <div
+                className={`flex items-center bg-surface-container-lowest border border-outline-variant rounded px-3 py-1.5 focus-within:border-primary transition-colors ${
+                  deployEnabled ? '' : 'opacity-50'
+                }`}
+              >
+                <span className="text-tertiary font-mono mr-2 font-bold">$</span>
+                <input
+                  type="text"
+                  value={deployCommand}
+                  onChange={(e) => setDeployCommand(e.target.value)}
+                  disabled={running || !deployEnabled}
+                  spellCheck={false}
+                  placeholder="e.g. npm run deploy · bash scripts/deploy.sh"
+                  className="bg-transparent border-none focus:ring-0 text-xs font-mono p-0 w-full focus:outline-none disabled:opacity-60"
+                />
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Pipeline Stages Display Progress Bar */}
         <section className="bg-surface-container-low border border-outline-variant rounded-lg p-5 shrink-0 relative">
           <h2 className="text-[10px] text-outline font-mono font-bold uppercase mb-6">
-            Pipeline Strategy: tests → commit → merge → bump → push
+            Pipeline Strategy: tests → commit → merge → bump → push → deploy
           </h2>
 
           <div className="relative flex justify-between items-center max-w-4xl mx-auto px-6">

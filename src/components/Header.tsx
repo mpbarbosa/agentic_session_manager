@@ -2,8 +2,8 @@ import { Search, Settings, Plus } from 'lucide-react';
 import { Repository } from '../types';
 
 interface HeaderProps {
-  activeView: 'changes' | 'history' | 'worktrees' | 'release' | 'settings';
-  setActiveView: (view: 'changes' | 'history' | 'worktrees' | 'release' | 'settings') => void;
+  activeView: 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings';
+  setActiveView: (view: 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings') => void;
   activeRepo: Repository;
   onAddLocalRepo: () => void;
   searchQuery: string;
