@@ -1,6 +1,6 @@
 {
   "name": "agentic_session_manager",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Agentic session manager that monitors repositories and their evolution and status",
   "type": "module",
   "scripts": {
