@@ -11,7 +11,7 @@ Pick a local repo (it also reads its linked worktrees) and work across these tab
 - **Changes** — working-tree diff per file; commit with an AI-generated message (Claude) or your own; stage-and-commit.
 - **History** — a **List** view (rich commit rows → click for a per-file diff inspector, checkout) and a **Graph** view rendering `git log --graph` (`pretty`, always available) or **git-foresta** (`forest`, if installed; otherwise it falls back to pretty). Wired Style / `--all` / limit controls.
 - **Worktrees** — create / merge → main / sync ← main; click one to make it the active working tree.
-- **Compare** — divergence matrix of every branch + worktree vs a base (default `main`): ahead / behind / merge-base / dirty, expandable to each branch's unique commits, with **copy git-name** and **Prune** (remove a merged worktree / delete a merged branch) actions.
+- **Compare** — divergence matrix of every branch + worktree vs a base (default `main`): ahead / behind / merge-base / dirty, expandable to each branch's unique commits. Per-row actions: **Merge** a branch that's ahead into the base (works even when the base isn't checked out — it merges in a throwaway worktree, leaving your tree untouched), **Prune** a merged worktree / delete a merged branch, **⇥ base + Delete** to retire the merged branch you're currently on, and **copy** the git name.
 - **Release** — a streamed pipeline: **tests → commit → merge → bump → push → deploy** (tests run in the selected worktree; commit/merge/bump/push/deploy land on main). Bump version is chosen by Claude; push and deploy are opt-in.
 - **Terminal** — run a shell command in the active repo/worktree.
 - **Settings** — developer profile + live API-server health.
@@ -41,3 +41,5 @@ The web dev server runs on `5173` and proxies `/api` to the API on `API_PORT` (d
 ## Configuration
 
 Monitored repos live in `repos.config.json` (override the path with `REPOS_CONFIG`). Add an entry with `id`, `name`, and an optional `path` — no code change needed. The file also persists the active repo (`selectedId`) and active worktree.
+
+In-app, click **+ Add local repo** and either paste the absolute path or use **Browse…** — a folder-picker dialog that walks the filesystem and flags which folders are git repos.
