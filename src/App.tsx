@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Repository, FileChange, Commit, Worktree, RepoOverviewRow } from './types';
+import { Repository, FileChange, Commit, Worktree, RepoOverviewRow, ViewId } from './types';
 import {
   fetchRepos,
   fetchHealth,
@@ -15,6 +15,7 @@ import {
   syncWorktreeFromMain,
   fetchCommitDetail,
   fetchGraph,
+  fetchBranches,
   fetchCompare,
   checkoutRef,
   createWorktree,
@@ -31,6 +32,7 @@ import ChangesView from './components/ChangesView';
 import HistoryView from './components/HistoryView';
 import WorktreesView from './components/WorktreesView';
 import CompareView from './components/CompareView';
+import BranchesView from './components/BranchesView';
 import ReleaseView from './components/ReleaseView';
 import SettingsView from './components/SettingsView';
 import TerminalDrawer from './components/TerminalDrawer';
@@ -43,7 +45,7 @@ type ToastType = 'success' | 'warning' | 'info';
 export default function App() {
   // Starts on the fleet Overview; the initial load drops straight into the
   // per-repo views when a repo was already selected (see the effect below).
-  const [activeView, setActiveView] = useState<'overview' | 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings'>('overview');
+  const [activeView, setActiveView] = useState<ViewId>('overview');
 
   // Server-owned state (source of truth = the API; no localStorage).
   const [repositories, setRepositories] = useState<Repository[]>([]);
@@ -231,6 +233,12 @@ export default function App() {
     [activeRepo.id],
   );
 
+  // Fetch all local branches (Branches tab).
+  const handleLoadBranches = useCallback(
+    () => fetchBranches(activeRepo.id),
+    [activeRepo.id],
+  );
+
   // Remove a fully-merged, clean worktree (Compare tab prune action).
   const handlePruneWorktree = useCallback(
     (path: string) => removeWorktree(activeRepo.id, path),
@@ -410,6 +418,9 @@ export default function App() {
               onSync={handleSyncWorktree}
               onRefresh={handleSyncRepo}
             />
+          )}
+          {activeView === 'branches' && (
+            <BranchesView repoName={activeRepo.name} onLoadBranches={handleLoadBranches} />
           )}
           {activeView === 'compare' && (
             <CompareView

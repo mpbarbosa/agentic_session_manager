@@ -1,3 +1,18 @@
+/**
+ * The top-level views, in nav order. Declared once because Sidebar, Header and
+ * App all need it: three copies of the same union is what made adding Overview
+ * and Branches collide in all three files.
+ */
+export type ViewId =
+  | 'overview'
+  | 'changes'
+  | 'history'
+  | 'worktrees'
+  | 'branches'
+  | 'compare'
+  | 'release'
+  | 'settings';
+
 export interface Repository {
   id: string;
   name: string;
