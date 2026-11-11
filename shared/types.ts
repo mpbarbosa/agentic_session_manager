@@ -75,6 +75,32 @@ export interface CompareResult {
   rows: CompareRow[];
 }
 
+/** One local branch of a repo (GET /api/repos/:id/branches). */
+export interface BranchInfo {
+  /** Branch name (short, e.g. "main" or "feature/x"). */
+  name: string;
+  /** True when this branch is the HEAD of the main working tree. */
+  current: boolean;
+  /** Short hash of the branch tip. */
+  head: string;
+  /** Subject of the branch's last commit. */
+  subject: string;
+  /** Last-commit date, humanized (e.g. "3 days ago"). */
+  relativeDate: string;
+  /** Tracking branch (e.g. "origin/main"), or null when the branch has no upstream. */
+  upstream: string | null;
+  /** True when the branch tracks an upstream that no longer exists ([gone]). */
+  gone: boolean;
+  /** Commits on this branch not on its upstream (unpushed). */
+  ahead: number;
+  /** Commits on the upstream not on this branch (unpulled). */
+  behind: number;
+  /** Path of the worktree this branch is checked out in, or null. */
+  worktree: string | null;
+  /** True for the primary working tree's checkout (the main tree). */
+  isMain: boolean;
+}
+
 /** Server/runtime health (GET /api/health). */
 export interface HealthInfo {
   /** Node.js version, e.g. "v22.3.0". */

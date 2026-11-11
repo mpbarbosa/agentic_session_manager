@@ -1,4 +1,5 @@
 import type {
+  BranchInfo,
   BrowseResult,
   CheckoutResult,
   Commit,
@@ -22,6 +23,14 @@ export function fetchCompare(id: string, base?: string): Promise<CompareResult> 
 
 export function fetchHealth(): Promise<HealthInfo> {
   return request<HealthInfo>("/api/health");
+}
+
+/** All local branches of a repo with upstream tracking + worktree checkout. */
+export async function fetchBranches(id: string): Promise<BranchInfo[]> {
+  const data = await request<{ branches: BranchInfo[] }>(
+    `/api/repos/${encodeURIComponent(id)}/branches`,
+  );
+  return data.branches;
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

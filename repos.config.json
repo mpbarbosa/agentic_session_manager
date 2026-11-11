@@ -51,6 +51,11 @@
       "id": "sampa-graphics-terminal",
       "name": "sampa_graphics_terminal",
       "path": "/home/mpb/Documents/GitHub/sampa_graphics_terminal"
+    },
+    {
+      "id": "sampa2-graphics-terminal",
+      "name": "sampa2_graphics_terminal",
+      "path": "/home/mpb/Documents/GitHub/sampa2_graphics_terminal"
     }
   ],
   "selectedId": "agentic-session-manager",

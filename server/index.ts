@@ -19,6 +19,7 @@ import {
   pickDefaultBranch,
 } from "./pure.ts";
 import type {
+  BranchInfo,
   BrowseEntry,
   BrowseResult,
   BumpDecision,
@@ -384,6 +385,62 @@ async function resolveWorktreePath(
   const wts = await readWorktrees(entry);
   const match = wts.find((w) => path.resolve(w.path) === target);
   return match ? match.path : entry.path;
+}
+
+/**
+ * All local branches of a repo, newest-commit first, each annotated with its upstream
+ * tracking status (ahead/behind/gone) and the worktree it's checked out in (if any).
+ * Read-only: a single `git for-each-ref` plus the repo's worktree list.
+ */
+async function readBranches(entry: RepoConfigEntry): Promise<BranchInfo[]> {
+  const dir = entry.path;
+  if (!dir) return [];
+  // Field-separated, one branch per line. %(contents:subject) is single-line, so the
+  // LOG_SEP unit separator can't collide with any field's content.
+  const fmt = [
+    "%(HEAD)",
+    "%(refname:short)",
+    "%(objectname:short)",
+    "%(upstream:short)",
+    "%(upstream:track)",
+    "%(committerdate:relative)",
+    "%(contents:subject)",
+  ].join(LOG_SEP);
+  const raw = await git(dir, [
+    "for-each-ref",
+    "--sort=-committerdate",
+    `--format=${fmt}`,
+    "refs/heads",
+  ]);
+  if (raw === null) return []; // path missing or not a git repo
+  if (raw === "") return [];
+
+  const wts = await readWorktrees(entry);
+  const wtByBranch = new Map<string, Worktree>();
+  for (const w of wts) if (w.branch) wtByBranch.set(w.branch, w);
+
+  return raw.split("\n").filter(Boolean).map((line) => {
+    const [head, name, hash, upstream, track = "", relativeDate = "", subject = ""] =
+      line.split(LOG_SEP);
+    // %(upstream:track) is one of: "", "[gone]", "[ahead N]", "[behind M]", "[ahead N, behind M]".
+    const gone = /\[gone\]/.test(track);
+    const ahead = Number(/ahead (\d+)/.exec(track)?.[1] ?? 0);
+    const behind = Number(/behind (\d+)/.exec(track)?.[1] ?? 0);
+    const wt = wtByBranch.get(name) ?? null;
+    return {
+      name,
+      current: head === "*",
+      head: hash,
+      subject,
+      relativeDate,
+      upstream: upstream || null,
+      gone,
+      ahead,
+      behind,
+      worktree: wt?.path ?? null,
+      isMain: wt?.isMain ?? false,
+    };
+  });
 }
 
 // ── Test-runner detection ─────────────────────────────────────────────────────
@@ -1136,6 +1193,21 @@ app.get("/api/repos/:id/worktrees", async (req, res) => {
       return;
     }
     res.json({ worktrees: await readWorktrees(entry) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// All local branches with their upstream tracking status + worktree checkout (read-only).
+app.get("/api/repos/:id/branches", async (req, res) => {
+  try {
+    const config = await loadConfig();
+    const entry = config.repos.find((e) => e.id === req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: `No monitored repo with id '${req.params.id}'` });
+      return;
+    }
+    res.json({ branches: await readBranches(entry) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

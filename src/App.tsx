@@ -15,6 +15,7 @@ import {
   syncWorktreeFromMain,
   fetchCommitDetail,
   fetchGraph,
+  fetchBranches,
   fetchCompare,
   checkoutRef,
   createWorktree,
@@ -30,6 +31,7 @@ import ChangesView from './components/ChangesView';
 import HistoryView from './components/HistoryView';
 import WorktreesView from './components/WorktreesView';
 import CompareView from './components/CompareView';
+import BranchesView from './components/BranchesView';
 import ReleaseView from './components/ReleaseView';
 import SettingsView from './components/SettingsView';
 import TerminalDrawer from './components/TerminalDrawer';
@@ -40,7 +42,7 @@ const EMPTY_REPO: Repository = { id: '', name: 'No repository', activeBranch: 'â
 type ToastType = 'success' | 'warning' | 'info';
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings'>('history');
+  const [activeView, setActiveView] = useState<'changes' | 'history' | 'worktrees' | 'branches' | 'compare' | 'release' | 'settings'>('history');
 
   // Server-owned state (source of truth = the API; no localStorage).
   const [repositories, setRepositories] = useState<Repository[]>([]);
@@ -200,6 +202,12 @@ export default function App() {
   // Fetch the branch/worktree divergence matrix (Compare tab).
   const handleLoadCompare = useCallback(
     (base?: string) => fetchCompare(activeRepo.id, base),
+    [activeRepo.id],
+  );
+
+  // Fetch all local branches (Branches tab).
+  const handleLoadBranches = useCallback(
+    () => fetchBranches(activeRepo.id),
     [activeRepo.id],
   );
 
@@ -373,6 +381,9 @@ export default function App() {
               onSync={handleSyncWorktree}
               onRefresh={handleSyncRepo}
             />
+          )}
+          {activeView === 'branches' && (
+            <BranchesView repoName={activeRepo.name} onLoadBranches={handleLoadBranches} />
           )}
           {activeView === 'compare' && (
             <CompareView
