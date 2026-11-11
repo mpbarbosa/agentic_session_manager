@@ -25,6 +25,12 @@ export interface RepoStatus {
   dirtyCount: number;
   /** Short hash + subject of the most recent commit, if available. */
   lastCommit: string | null;
+  /** Subject line of the most recent commit, without the hash. */
+  lastCommitSubject: string | null;
+  /** Author date of the most recent commit, ISO 8601 — sortable "how stale is this repo". */
+  lastCommitDate: string | null;
+  /** Author date of the most recent commit, humanized (e.g. "3 days ago"). */
+  lastCommitRelative: string | null;
   /** Names of git worktrees attached to this repo. */
   worktrees: string[];
   /** True when the configured path exists and is a git repository. */

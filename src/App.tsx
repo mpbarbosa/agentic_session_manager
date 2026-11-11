@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Repository, FileChange, Commit, Worktree } from './types';
+import { Repository, FileChange, Commit, Worktree, RepoOverviewRow } from './types';
 import {
   fetchRepos,
   fetchHealth,
@@ -23,8 +23,9 @@ import {
   mergeBranch,
   execCommand,
 } from './api';
-import { toRepository, logToCommits, worktreesToView, avatarFor } from './adapters';
+import { toRepository, toOverviewRow, logToCommits, worktreesToView, avatarFor } from './adapters';
 import Sidebar from './components/Sidebar';
+import OverviewView from './components/OverviewView';
 import Header from './components/Header';
 import ChangesView from './components/ChangesView';
 import HistoryView from './components/HistoryView';
@@ -40,10 +41,13 @@ const EMPTY_REPO: Repository = { id: '', name: 'No repository', activeBranch: 'â
 type ToastType = 'success' | 'warning' | 'info';
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings'>('history');
+  // Starts on the fleet Overview; the initial load drops straight into the
+  // per-repo views when a repo was already selected (see the effect below).
+  const [activeView, setActiveView] = useState<'overview' | 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings'>('overview');
 
   // Server-owned state (source of truth = the API; no localStorage).
   const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [overviewRepos, setOverviewRepos] = useState<RepoOverviewRow[]>([]);
   const [activeRepo, setActiveRepo] = useState<Repository>(EMPTY_REPO);
   const [selectedWorktree, setSelectedWorktree] = useState<string | null>(null);
   const [fileChanges, setFileChanges] = useState<FileChange[]>([]);
@@ -61,6 +65,7 @@ export default function App() {
 
   // UI helpers
   const [isSyncing, setIsSyncing] = useState(false);
+  const [reposLoading, setReposLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [addRepoOpen, setAddRepoOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -71,6 +76,20 @@ export default function App() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
+
+  // One place to refresh the repo list: the sidebar switcher and the Overview
+  // table are two views of the same GET /api/repos payload, so they never drift.
+  const refreshRepos = useCallback(async () => {
+    setReposLoading(true);
+    try {
+      const data = await fetchRepos();
+      setRepositories(data.repos.map(toRepository));
+      setOverviewRepos(data.repos.map(toOverviewRow));
+      return data;
+    } finally {
+      setReposLoading(false);
+    }
+  }, []);
 
   // Load the per-repo/worktree data (Changes/History/Worktrees).
   const loadRepoData = useCallback(async (repoId: string, worktree: string | null) => {
@@ -106,18 +125,22 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const { repos, selectedId, selectedWorktree: sw } = await fetchRepos();
+        const { repos, selectedId, selectedWorktree: sw } = await refreshRepos();
         const mapped = repos.map(toRepository);
-        setRepositories(mapped);
-        const active = mapped.find((r) => r.id === selectedId) ?? mapped[0] ?? EMPTY_REPO;
+        const active = mapped.find((r) => r.id === selectedId) ?? EMPTY_REPO;
         setActiveRepo(active);
         setSelectedWorktree(sw);
-        if (active.id) await loadRepoData(active.id, sw);
+        if (active.id) {
+          // A repo was already selected, so skip the fleet view and resume where
+          // the app used to open. With no selection we stay on the Overview.
+          setActiveView('history');
+          await loadRepoData(active.id, sw);
+        }
       } catch (err) {
         showToast((err as Error).message, 'warning');
       }
     })();
-  }, [loadRepoData]);
+  }, [loadRepoData, refreshRepos]);
 
   // Switch repository (persists server-side, resets to main worktree).
   const selectRepo = async (repo: Repository) => {
@@ -131,13 +154,19 @@ export default function App() {
     }
   };
 
+  // Picking a row in the Overview: select that repo, then drop into the per-repo views.
+  const selectRepoById = async (id: string) => {
+    const repo = repositories.find((r) => r.id === id);
+    if (!repo) return;
+    setActiveView('history');
+    await selectRepo(repo);
+  };
+
   const handleSyncRepo = async () => {
-    if (!activeRepo.id) return;
     setIsSyncing(true);
     try {
-      const { repos } = await fetchRepos();
-      setRepositories(repos.map(toRepository));
-      await loadRepoData(activeRepo.id, selectedWorktree);
+      await refreshRepos();
+      if (activeRepo.id) await loadRepoData(activeRepo.id, selectedWorktree);
       showToast('Refreshed from disk.', 'success');
     } catch (err) {
       showToast((err as Error).message, 'warning');
@@ -149,9 +178,8 @@ export default function App() {
   const handleAddRepoSubmit = async (newRepo: { name: string; activeBranch: string; path: string }) => {
     try {
       const created = await addRepo(newRepo.path);
-      const { repos, selectedId, selectedWorktree: sw } = await fetchRepos();
+      const { repos, selectedId, selectedWorktree: sw } = await refreshRepos();
       const mapped = repos.map(toRepository);
-      setRepositories(mapped);
       const active = mapped.find((r) => r.id === (selectedId ?? created.id)) ?? EMPTY_REPO;
       setActiveRepo(active);
       setSelectedWorktree(sw);
@@ -250,8 +278,7 @@ export default function App() {
         r.detached ? `Checked out ${r.head} (detached HEAD).` : `Checked out ${r.branch}.`,
         'success',
       );
-      const { repos } = await fetchRepos();
-      setRepositories(repos.map(toRepository));
+      await refreshRepos();
       await loadRepoData(activeRepo.id, selectedWorktree);
     } catch (err) {
       showToast((err as Error).message, 'warning');
@@ -340,6 +367,16 @@ export default function App() {
         />
 
         <main className="flex-1 ml-[280px] mt-16 flex flex-col overflow-hidden bg-surface-container-lowest relative">
+          {activeView === 'overview' && (
+            <OverviewView
+              repos={overviewRepos}
+              activeRepoId={activeRepo.id}
+              onSelectRepo={selectRepoById}
+              onRefresh={refreshRepos}
+              onAddRepo={() => setAddRepoOpen(true)}
+              loading={reposLoading}
+            />
+          )}
           {activeView === 'changes' && (
             <ChangesView
               fileChanges={fileChanges}

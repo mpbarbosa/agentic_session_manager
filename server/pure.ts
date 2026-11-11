@@ -4,7 +4,13 @@
 // server/index.ts (which starts the HTTP server on import). No fs, no git, no
 // network — inputs in, values out.
 import Anthropic from "@anthropic-ai/sdk";
-import type { Worktree, GitStatusDetail, BumpDecision, TestRunner } from "../shared/types.ts";
+import type {
+  Worktree,
+  GitStatusDetail,
+  BumpDecision,
+  TestRunner,
+  RepoStatus,
+} from "../shared/types.ts";
 
 /** Slugify `base` into a stable id unique within `taken` (appends -2, -3, …). */
 export function uniqueId(base: string, taken: Set<string>): string {
@@ -13,6 +19,67 @@ export function uniqueId(base: string, taken: Set<string>): string {
   let i = 2;
   while (taken.has(`${slug}-${i}`)) i++;
   return `${slug}-${i}`;
+}
+
+/** Unit separator used to pack the overview's last-commit fields into one `git log` line. */
+export const LAST_COMMIT_SEP = "\x1f";
+
+/** The `--pretty` format `parseLastCommit` expects: hash, subject, ISO date, relative date. */
+export const LAST_COMMIT_FORMAT = ["%h", "%s", "%cI", "%cr"].join(LAST_COMMIT_SEP);
+
+/**
+ * Parse one `git log -1 --pretty=<LAST_COMMIT_FORMAT>` line into the overview's
+ * last-commit fields. A repo with no commits yet (git prints nothing) yields all nulls.
+ */
+export function parseLastCommit(
+  raw: string | null,
+): Pick<RepoStatus, "lastCommit" | "lastCommitSubject" | "lastCommitDate" | "lastCommitRelative"> {
+  const empty = {
+    lastCommit: null,
+    lastCommitSubject: null,
+    lastCommitDate: null,
+    lastCommitRelative: null,
+  };
+  if (!raw) return empty;
+  const [hash, subject, date, relative] = raw.split(LAST_COMMIT_SEP);
+  if (!hash) return empty;
+  return {
+    // Kept in the original "<short hash> <subject>" shape for existing callers.
+    lastCommit: subject ? `${hash} ${subject}` : hash,
+    lastCommitSubject: subject || null,
+    lastCommitDate: date || null,
+    lastCommitRelative: relative || null,
+  };
+}
+
+/**
+ * Turn the contents of a `.git/worktrees/<name>/gitdir` file into that linked
+ * worktree's path. The file holds the path of the worktree's own `.git` *file*
+ * (e.g. "/home/u/proj/.worktrees/feat/.git"), so the worktree is its parent dir.
+ * Returns null for an empty/garbled file.
+ */
+export function worktreePathFromGitdir(contents: string): string | null {
+  const line = contents.trim();
+  if (!line) return null;
+  const slash = line.lastIndexOf("/");
+  if (slash <= 0) return null;
+  return line.slice(0, slash);
+}
+
+/**
+ * Resolve a *linked* worktree's shared git directory from the contents of its
+ * `.git` file, which reads `gitdir: <common>/worktrees/<name>`. Returns the
+ * common git dir (`<common>`) so the whole worktree set can be enumerated from a
+ * linked checkout, exactly as `git worktree list` reports it. Returns null when
+ * the file is not a worktree pointer (e.g. a submodule).
+ */
+export function commonGitDirFromGitFile(contents: string): string | null {
+  const m = /^gitdir:\s*(.+)$/m.exec(contents.trim());
+  if (!m) return null;
+  const gitdir = m[1].trim().replace(/\/+$/, "");
+  const marker = gitdir.lastIndexOf("/worktrees/");
+  if (marker <= 0) return null;
+  return gitdir.slice(0, marker);
 }
 
 /** Parse a `git status -b --porcelain` branch header line. */

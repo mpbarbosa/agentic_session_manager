@@ -1,6 +1,13 @@
 {
   "repos": [
     {
+      "id": "99freela",
+      "name": "99freela",
+      "path": "/home/mpb/Documents/GitHub/99freela",
+      "description": "Gestão das propostas de projeto no site https://www.99freelas.com.br/",
+      "url": "https://github.com/mpbarbosa/99freela"
+    },
+    {
       "id": "agentic-session-manager",
       "name": "agentic_session_manager",
       "path": "/home/mpb/Documents/GitHub/agentic_session_manager",
@@ -10,47 +17,706 @@
     {
       "id": "agora-na-copa-2026",
       "name": "agora_na_copa_2026",
-      "path": "/home/mpb/Documents/GitHub/agora_na_copa_2026"
+      "path": "/home/mpb/Documents/GitHub/agora_na_copa_2026",
+      "description": "FIFA World Cup 2026 companion app, live in production — React 19 · TypeScript · Express · AWS. Built end-to-end by directing AI coding agents (Claude Code, GitHub Copilot): Monte Carlo qualification simulator with a Dixon-Coles model, 283 unit tests across 34 files + 37 Playwright e2e specs, 1,204 commits.",
+      "url": "https://github.com/mpbarbosa/agora_na_copa_2026"
     },
     {
-      "id": "teorizando",
-      "name": "teorizando",
-      "path": "/home/mpb/Documents/GitHub/teorizando"
+      "id": "ai-tools",
+      "name": "ai_tools",
+      "path": "/home/mpb/Documents/GitHub/ai_tools",
+      "description": "Development of AI tools in order to improve development quality and better AI usage",
+      "url": "https://github.com/mpbarbosa/ai_tools"
     },
     {
-      "id": "sysupdate",
-      "name": "sysupdate",
-      "path": "/home/mpb/Documents/GitHub/sysupdate"
+      "id": "ai-workflow",
+      "name": "ai_workflow",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow",
+      "description": "Workflow to validate and enhance documenation, code and tests with ai support",
+      "url": "https://github.com/mpbarbosa/ai_workflow"
     },
     {
-      "id": "linkedin",
-      "name": "linkedin",
-      "path": "/home/mpb/Documents/GitHub/linkedin"
+      "id": "ai-workflow-js",
+      "name": "ai_workflow.js",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow.js",
+      "description": "AI Workflow Automation (in JavaScript)",
+      "url": "https://github.com/mpbarbosa/ai_workflow.js"
+    },
+    {
+      "id": "ai-workflow-js-revive-claude-provider-step01",
+      "name": "ai_workflow.js-revive-claude-provider-step01",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow.js-revive-claude-provider-step01",
+      "description": "AI Workflow Automation (in JavaScript)",
+      "url": "https://github.com/mpbarbosa/ai_workflow.js"
+    },
+    {
+      "id": "ai-workflow-js-revive-prompt-engineering",
+      "name": "ai_workflow.js-revive-prompt-engineering",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow.js-revive-prompt-engineering",
+      "description": "AI Workflow Automation (in JavaScript)",
+      "url": "https://github.com/mpbarbosa/ai_workflow.js"
+    },
+    {
+      "id": "ai-workflow-js-revive-tui-init-orchestrator",
+      "name": "ai_workflow.js-revive-tui-init-orchestrator",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow.js-revive-tui-init-orchestrator",
+      "description": "AI Workflow Automation (in JavaScript)",
+      "url": "https://github.com/mpbarbosa/ai_workflow.js"
+    },
+    {
+      "id": "ai-workflow-core",
+      "name": "ai_workflow_core",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow_core",
+      "description": "AI Workflow configuration and foundational files",
+      "url": "https://github.com/mpbarbosa/ai_workflow_core"
+    },
+    {
+      "id": "ai-workflow-fspec",
+      "name": "ai_workflow_fspec",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow_fspec",
+      "description": "AI Workflow Programming Language Independent Functional Specification",
+      "url": "https://github.com/mpbarbosa/ai_workflow_fspec"
+    },
+    {
+      "id": "ai-workflow-js-prod",
+      "name": "ai_workflow_js_prod",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow_js_prod",
+      "description": "AI Workflow Automation (in JavaScript)",
+      "url": "https://github.com/mpbarbosa/ai_workflow.js"
+    },
+    {
+      "id": "ai-workflow-log-analyzer",
+      "name": "ai_workflow_log_analyzer",
+      "path": "/home/mpb/Documents/GitHub/ai_workflow_log_analyzer",
+      "description": "AI_Workflow log analyzer",
+      "url": "https://github.com/mpbarbosa/ai_workflow_log_analyzer"
+    },
+    {
+      "id": "alacritty",
+      "name": "alacritty",
+      "path": "/home/mpb/Documents/GitHub/alacritty",
+      "description": "<p align=\"center\">"
+    },
+    {
+      "id": "alerta-zona-azul",
+      "name": "alerta_zona_azul",
+      "path": "/home/mpb/Documents/GitHub/alerta_zona_azul",
+      "description": "It's a project to develop an Android Kotlin app that must alert the user when he/she stops in a area of São Paulo city classified as Zona Azul (taxed area)",
+      "url": "https://github.com/mpbarbosa/alerta_zona_azul"
+    },
+    {
+      "id": "andarilho",
+      "name": "andarilho",
+      "path": "/home/mpb/Documents/GitHub/andarilho",
+      "description": "Interface HTML para os dados do IBGE",
+      "url": "https://github.com/mpbarbosa/andarilho"
+    },
+    {
+      "id": "android-studio-docker",
+      "name": "android-studio-docker",
+      "path": "/home/mpb/Documents/GitHub/android-studio-docker"
+    },
+    {
+      "id": "articles",
+      "name": "articles",
+      "path": "/home/mpb/Documents/GitHub/articles",
+      "description": "articles on various diverse subjects",
+      "url": "https://github.com/mpbarbosa/articles"
     },
     {
       "id": "bessa-patterns-ts",
       "name": "bessa_patterns.ts",
-      "path": "/home/mpb/Documents/GitHub/bessa_patterns.ts"
+      "path": "/home/mpb/Documents/GitHub/bessa_patterns.ts",
+      "description": "Library of Reusable Programming Patterns in TypeScript",
+      "url": "https://github.com/mpbarbosa/bessa_patterns.ts"
     },
     {
-      "id": "ibira-js",
-      "name": "ibira.js",
-      "path": "/home/mpb/Documents/GitHub/ibira.js"
+      "id": "busca-vagas",
+      "name": "busca_vagas",
+      "path": "/home/mpb/Documents/GitHub/busca_vagas",
+      "description": "Aplicação web para busca de vagas em hotéis de sindicatos.",
+      "url": "https://github.com/mpbarbosa/busca_vagas"
+    },
+    {
+      "id": "catas-altas-speech",
+      "name": "catas_altas_speech",
+      "path": "/home/mpb/Documents/GitHub/catas_altas_speech",
+      "description": "A speech library developed in TypeScript",
+      "url": "https://github.com/mpbarbosa/catas_altas_speech"
+    },
+    {
+      "id": "claude-setup",
+      "name": "claude_setup",
+      "path": "/home/mpb/Documents/GitHub/claude_setup",
+      "description": "claude code setup",
+      "url": "https://github.com/mpbarbosa/claude_setup"
+    },
+    {
+      "id": "compositor",
+      "name": "compositor",
+      "path": "/home/mpb/Documents/GitHub/compositor",
+      "description": "Interface for composing songs with codeless Strudel",
+      "url": "https://github.com/mpbarbosa/compositor"
+    },
+    {
+      "id": "concursos",
+      "name": "concursos",
+      "path": "/home/mpb/Documents/GitHub/concursos",
+      "description": "Repositório para suporte às pesquisas do Claude Code Agente para concursos públicos",
+      "url": "https://github.com/mpbarbosa/concursos"
+    },
+    {
+      "id": "contatos-recursos",
+      "name": "contatos_recursos",
+      "path": "/home/mpb/Documents/GitHub/contatos_recursos",
+      "description": "Cadastro de contatos e recursos",
+      "url": "https://github.com/mpbarbosa/contatos_recursos"
+    },
+    {
+      "id": "conversando-com-pessoa",
+      "name": "conversando_com_pessoa",
+      "path": "/home/mpb/Documents/GitHub/conversando_com_pessoa",
+      "description": "Chatbot que responde em verso, na voz de Fernando Pessoa ou de um heterónimo,",
+      "url": "https://github.com/mpbarbosa/conversando_com_pessoa"
+    },
+    {
+      "id": "devices",
+      "name": "devices",
+      "path": "/home/mpb/Documents/GitHub/devices",
+      "description": "A shell script suite to setup, mount and unmout devices connected to Linux",
+      "url": "https://github.com/mpbarbosa/devices"
+    },
+    {
+      "id": "devops",
+      "name": "devops",
+      "path": "/home/mpb/Documents/GitHub/devops",
+      "description": "devlops na amazon",
+      "url": "https://github.com/mpbarbosa/devops"
+    },
+    {
+      "id": "doc-template-lib",
+      "name": "doc_template_lib",
+      "path": "/home/mpb/Documents/GitHub/doc_template_lib",
+      "description": "Document template library to be used by other project as reference",
+      "url": "https://github.com/mpbarbosa/doc_template_lib"
+    },
+    {
+      "id": "dotfiles",
+      "name": "dotfiles",
+      "path": "/home/mpb/Documents/GitHub/dotfiles",
+      "description": "Personal dotfiles managed with GNU Stow for easy deployment across Linux systems.",
+      "url": "https://github.com/mpbarbosa/dotfiles"
+    },
+    {
+      "id": "estudos",
+      "name": "estudos",
+      "path": "/home/mpb/Documents/GitHub/estudos",
+      "url": "https://github.com/mpbarbosa/estudos"
+    },
+    {
+      "id": "fernando",
+      "name": "fernando",
+      "path": "/home/mpb/Documents/GitHub/fernando",
+      "description": "Acompanhamento da saúde mental do meu filho",
+      "url": "https://github.com/mpbarbosa/fernando"
+    },
+    {
+      "id": "financas",
+      "name": "financas",
+      "path": "/home/mpb/Documents/GitHub/financas",
+      "description": "Controle das finanças, assinturas e contas",
+      "url": "https://github.com/mpbarbosa/financas"
+    },
+    {
+      "id": "flask-for-startups",
+      "name": "flask_for_startups",
+      "path": "/home/mpb/Documents/GitHub/flask_for_startups",
+      "description": "This flask boilerplate was written to help make it easy to iterate on your startup/indiehacker business, thereby increasing your chances of success."
+    },
+    {
+      "id": "flasky",
+      "name": "flasky",
+      "path": "/home/mpb/Documents/GitHub/flasky",
+      "description": "This repository contains the source code examples for the second edition of my O'Reilly book Flask Web Development."
+    },
+    {
+      "id": "freestorage",
+      "name": "freestorage",
+      "path": "/home/mpb/Documents/GitHub/freestorage",
+      "description": "an app to free storage in Linux OS file system.",
+      "url": "https://github.com/mpbarbosa/freestorage"
+    },
+    {
+      "id": "geo-animations",
+      "name": "geo_animations",
+      "path": "/home/mpb/Documents/GitHub/geo_animations"
+    },
+    {
+      "id": "get-db-info",
+      "name": "get_db_info",
+      "path": "/home/mpb/Documents/GitHub/get_db_info",
+      "description": "This flask boilerplate was written to help make it easy to iterate on your startup/indiehacker business, thereby increasing your chances of success.",
+      "url": "https://github.com/mpbarbosa/get_db_info"
+    },
+    {
+      "id": "gitx",
+      "name": "gitx",
+      "path": "/home/mpb/Documents/GitHub/gitx",
+      "description": "TypeScript Ink TUI App for git commands with MCP",
+      "url": "https://github.com/mpbarbosa/gitx"
+    },
+    {
+      "id": "guerra",
+      "name": "guerra",
+      "path": "/home/mpb/Documents/GitHub/guerra",
+      "description": "Web page with news on war",
+      "url": "https://github.com/mpbarbosa/guerra"
     },
     {
       "id": "guia-js",
       "name": "guia_js",
-      "path": "/home/mpb/Documents/GitHub/guia_js"
+      "path": "/home/mpb/Documents/GitHub/guia_js",
+      "description": "Last Updated: 2026-05-28",
+      "url": "https://github.com/mpbarbosa/guia.js"
+    },
+    {
+      "id": "hyprland-setup",
+      "name": "hyprland_setup",
+      "path": "/home/mpb/Documents/GitHub/hyprland_setup",
+      "description": "A GUI for Hyprland Setup implemented in quickshell",
+      "url": "https://github.com/mpbarbosa/hyprland_setup"
+    },
+    {
+      "id": "hyprwindowshade",
+      "name": "HyprWindowShade",
+      "path": "/home/mpb/Documents/GitHub/HyprWindowShade",
+      "description": "Hyprland plugin for per window shader application",
+      "url": "https://github.com/mpbarbosa/HyprWindowShade"
+    },
+    {
+      "id": "ia-critica-pessoa",
+      "name": "ia_critica_pessoa",
+      "path": "/home/mpb/Documents/GitHub/ia_critica_pessoa",
+      "description": "Gerar uma crítica literária com IA para poemas de Fernando Pessoa. O prompt será especializado para o poema, quando possível.",
+      "url": "https://github.com/mpbarbosa/ia_critica_pessoa"
+    },
+    {
+      "id": "ibira-js",
+      "name": "ibira.js",
+      "path": "/home/mpb/Documents/GitHub/ibira.js",
+      "description": "Biblioteca JavaScript púlbica com código para operações básicas como fetch em APIs",
+      "url": "https://github.com/mpbarbosa/ibira.js"
+    },
+    {
+      "id": "jget-db-info",
+      "name": "jget_db_info",
+      "path": "/home/mpb/Documents/GitHub/jget_db_info",
+      "url": "https://github.com/mpbarbosa/jget_db_info"
+    },
+    {
+      "id": "kickstart-nvim",
+      "name": "kickstart.nvim",
+      "path": "/home/mpb/Documents/GitHub/kickstart.nvim",
+      "description": "A starting point for Neovim that is:",
+      "url": "https://github.com/mpbarbosa/kickstart.nvim"
+    },
+    {
+      "id": "linkedin",
+      "name": "linkedin",
+      "path": "/home/mpb/Documents/GitHub/linkedin",
+      "description": "a plan to improve my linkedin profile",
+      "url": "https://github.com/mpbarbosa/linkedin"
+    },
+    {
+      "id": "manager",
+      "name": "manager",
+      "path": "/home/mpb/Documents/GitHub/manager",
+      "description": "Managing all repos",
+      "url": "https://github.com/mpbarbosa/manager"
+    },
+    {
+      "id": "manimlab",
+      "name": "manimlab",
+      "path": "/home/mpb/Documents/GitHub/manimlab",
+      "description": "lab of manic scripts",
+      "url": "https://github.com/mpbarbosa/manimlab"
+    },
+    {
+      "id": "mapasp",
+      "name": "mapasp",
+      "path": "/home/mpb/Documents/GitHub/mapasp",
+      "description": "Single Page Application (SPA) scaffold for map layers over Sao Paulo City",
+      "url": "https://github.com/mpbarbosa/mapasp"
+    },
+    {
+      "id": "minority-report",
+      "name": "minority_report",
+      "path": "/home/mpb/Documents/GitHub/minority_report",
+      "description": "Interface to execute action by hand moviment tracking",
+      "url": "https://github.com/mpbarbosa/minority_report"
+    },
+    {
+      "id": "monitora-vagas",
+      "name": "monitora_vagas",
+      "path": "/home/mpb/Documents/GitHub/monitora_vagas",
+      "description": "Página web para monitorar vagas nos hotéis AFPESP",
+      "url": "https://github.com/mpbarbosa/monitora_vagas"
+    },
+    {
+      "id": "mpb-scripts",
+      "name": "mpb_scripts",
+      "path": "/home/mpb/Documents/GitHub/mpb_scripts",
+      "description": "Linux shell scripts to automation.",
+      "url": "https://github.com/mpbarbosa/mpb_scripts"
+    },
+    {
+      "id": "mpbarbosa-com",
+      "name": "mpbarbosa.com",
+      "path": "/home/mpb/Documents/GitHub/mpbarbosa.com",
+      "description": "mpbarbosa.com web page staging file (pre-production) repository",
+      "url": "https://github.com/mpbarbosa/mpbarbosa.com"
+    },
+    {
+      "id": "mpbarbosa-site",
+      "name": "mpbarbosa_site",
+      "path": "/home/mpb/Documents/GitHub/mpbarbosa_site",
+      "description": "Site mpbarbosa",
+      "url": "https://github.com/mpbarbosa/mpbarbosa_site"
+    },
+    {
+      "id": "mpd-utils",
+      "name": "mpd-utils",
+      "path": "/home/mpb/Documents/GitHub/mpd-utils",
+      "description": "Scripts for configuring the Akai MPD218 Midi Pad Controller"
+    },
+    {
+      "id": "music-in-numbers",
+      "name": "music_in_numbers",
+      "path": "/home/mpb/Documents/GitHub/music_in_numbers",
+      "description": "Interface Web baseada em https://github.com/bhupeshk3014/spotify-clone-css",
+      "url": "https://github.com/mpbarbosa/music_in_numbers"
+    },
+    {
+      "id": "my-language-courses",
+      "name": "my_language_courses",
+      "path": "/home/mpb/Documents/GitHub/my_language_courses",
+      "description": "A comprehensive, structured repository for learning multiple languages with detailed study plans, beginner trackers, and daily practice schedules."
+    },
+    {
+      "id": "my-linux-configs",
+      "name": "my_linux_configs",
+      "path": "/home/mpb/Documents/GitHub/my_linux_configs",
+      "description": "1) Install Github",
+      "url": "https://github.com/mpbarbosa/my_linux_configs"
+    },
+    {
+      "id": "olinda-copilot-sdk-ts",
+      "name": "olinda_copilot_sdk.ts",
+      "path": "/home/mpb/Documents/GitHub/olinda_copilot_sdk.ts",
+      "description": "TypeScript Wrapper Library for GitHub Copilot SDK",
+      "url": "https://github.com/mpbarbosa/olinda_copilot_sdk.ts"
     },
     {
       "id": "olinda-graphics-terminal",
       "name": "olinda_graphics_terminal",
-      "path": "/home/mpb/Documents/GitHub/olinda_graphics_terminal"
+      "path": "/home/mpb/Documents/GitHub/olinda_graphics_terminal",
+      "description": "Graphics terminal developed in TypeScript runnin inside Web Browser",
+      "url": "https://github.com/mpbarbosa/olinda_graphics_terminal"
+    },
+    {
+      "id": "olinda-orchestrator",
+      "name": "olinda_orchestrator",
+      "path": "/home/mpb/Documents/GitHub/olinda_orchestrator",
+      "description": "A generic orchestrator TypeScript Library",
+      "url": "https://github.com/mpbarbosa/olinda_orchestrator"
+    },
+    {
+      "id": "olinda-prompter",
+      "name": "olinda_prompter",
+      "path": "/home/mpb/Documents/GitHub/olinda_prompter",
+      "description": "A tool to improve software development prompts with prompt engineering supported by TUI",
+      "url": "https://github.com/mpbarbosa/olinda_prompter"
+    },
+    {
+      "id": "olinda-prompter-prod",
+      "name": "olinda_prompter_prod",
+      "path": "/home/mpb/Documents/GitHub/olinda_prompter_prod",
+      "description": "A tool to improve software development prompts with prompt engineering supported by TUI",
+      "url": "https://github.com/mpbarbosa/olinda_prompter"
+    },
+    {
+      "id": "olinda-shell-interface-js",
+      "name": "olinda_shell_interface.js",
+      "path": "/home/mpb/Documents/GitHub/olinda_shell_interface.js",
+      "description": "Public JavaScript library to interface Linux shell commands",
+      "url": "https://github.com/mpbarbosa/olinda_shell_interface.js"
+    },
+    {
+      "id": "olinda-utils-js",
+      "name": "olinda_utils.js",
+      "path": "/home/mpb/Documents/GitHub/olinda_utils.js",
+      "description": "Public JavaScript library with utils",
+      "url": "https://github.com/mpbarbosa/olinda_utils.js"
+    },
+    {
+      "id": "onde-estou-backend",
+      "name": "onde_estou_backend",
+      "path": "/home/mpb/Documents/GitHub/onde_estou_backend",
+      "description": "AWS Location Based Service Setup",
+      "url": "https://github.com/mpbarbosa/onde_estou_backend"
+    },
+    {
+      "id": "ondeestou",
+      "name": "ondeestou",
+      "path": "/home/mpb/Documents/GitHub/ondeestou",
+      "description": "App Android",
+      "url": "https://github.com/mpbarbosa/ondeestou"
+    },
+    {
+      "id": "pajussara-tui-comp",
+      "name": "pajussara_tui_comp",
+      "path": "/home/mpb/Documents/GitHub/pajussara_tui_comp",
+      "description": "A Ink TUI Component Libraty in TypeScript",
+      "url": "https://github.com/mpbarbosa/pajussara_tui_comp"
+    },
+    {
+      "id": "paraty-geocore-js",
+      "name": "paraty_geocore.js",
+      "path": "/home/mpb/Documents/GitHub/paraty_geocore.js",
+      "description": "JavaScript core classes for geolocation applications",
+      "url": "https://github.com/mpbarbosa/paraty_geocore.js"
+    },
+    {
+      "id": "paraty-geoproxy",
+      "name": "paraty_geoproxy",
+      "path": "/home/mpb/Documents/GitHub/paraty_geoproxy",
+      "description": "A  geolocation proxy server developed in TypeScript and Node.js",
+      "url": "https://github.com/mpbarbosa/paraty_geoproxy"
+    },
+    {
+      "id": "paraty-geoservices",
+      "name": "paraty_geoservices",
+      "path": "/home/mpb/Documents/GitHub/paraty_geoservices",
+      "description": "A reverse geocoding service library develop in TypeScript and Node.js",
+      "url": "https://github.com/mpbarbosa/paraty_geoservices"
+    },
+    {
+      "id": "portal-brasileirao",
+      "name": "portal_brasileirao",
+      "path": "/home/mpb/Documents/GitHub/portal_brasileirao",
+      "description": "Campeonato Brasileiro Série A companion app, live in production — React 19 · TypeScript · Express · AWS. Built end-to-end by directing Claude Code: 742 commits, 45 unit + 30 Playwright e2e tests, 7 GitHub Actions workflows (incl. a documented rollback drill) and keyless OIDC deploy.",
+      "url": "https://github.com/mpbarbosa/portal_brasileirao"
+    },
+    {
+      "id": "powerlevel10k",
+      "name": "powerlevel10k",
+      "path": "/home/mpb/Documents/GitHub/powerlevel10k",
+      "description": "https://gitter.im/powerlevel10k/community?utmsource=badge&utmmedium=badge&utmcampaign=pr-badge)"
+    },
+    {
+      "id": "public-apis",
+      "name": "public_apis",
+      "path": "/home/mpb/Documents/GitHub/public_apis",
+      "description": "A list of public APIs",
+      "url": "https://github.com/mpbarbosa/public_apis"
+    },
+    {
+      "id": "renda",
+      "name": "renda",
+      "path": "/home/mpb/Documents/GitHub/renda",
+      "description": "Projeto para coordenar ações  em outros projetos com o objetivo de gerar renda através de atividades na Internet.",
+      "url": "https://github.com/mpbarbosa/renda"
+    },
+    {
+      "id": "rio-graphics-ts",
+      "name": "rio-graphics.ts",
+      "path": "/home/mpb/Documents/GitHub/rio-graphics.ts",
+      "description": "Single Page Application for Graphics in TypeScript",
+      "url": "https://github.com/mpbarbosa/rio-graphics.ts"
+    },
+    {
+      "id": "sampa2-graphics-terminal",
+      "name": "sampa2_graphics_terminal",
+      "path": "/home/mpb/Documents/GitHub/sampa2_graphics_terminal",
+      "description": "A graphics terminal with automatic man page and comand line preview developed in rust",
+      "url": "https://github.com/mpbarbosa/sampa2_graphics_terminal"
     },
     {
       "id": "sampa-graphics-terminal",
       "name": "sampa_graphics_terminal",
-      "path": "/home/mpb/Documents/GitHub/sampa_graphics_terminal"
+      "path": "/home/mpb/Documents/GitHub/sampa_graphics_terminal",
+      "description": "A graphics terminal with automatic man page and comand line preview",
+      "url": "https://github.com/mpbarbosa/sampa_graphics_terminal"
+    },
+    {
+      "id": "sandbox",
+      "name": "sandbox",
+      "path": "/home/mpb/Documents/GitHub/sandbox",
+      "description": "a sandbox repo to develop some labs and tests",
+      "url": "https://github.com/mpbarbosa/sandbox"
+    },
+    {
+      "id": "saude",
+      "name": "saude",
+      "path": "/home/mpb/Documents/GitHub/saude",
+      "description": "Usar o Claude Code para ajudar nos meus cuidados de saúde.",
+      "url": "https://github.com/mpbarbosa/saude"
+    },
+    {
+      "id": "scripts",
+      "name": "scripts",
+      "path": "/home/mpb/Documents/GitHub/scripts",
+      "description": "Shell scripts",
+      "url": "https://github.com/mpbarbosa/scripts"
+    },
+    {
+      "id": "sidra-js",
+      "name": "sidra.js",
+      "path": "/home/mpb/Documents/GitHub/sidra.js",
+      "description": "A JavaScript library for accessing SIDRA API (Brazilian Statistical System).",
+      "url": "https://github.com/mpbarbosa/sidra.js"
+    },
+    {
+      "id": "skills",
+      "name": "skills",
+      "path": "/home/mpb/Documents/GitHub/skills",
+      "description": "A repo for agentic IA skills",
+      "url": "https://github.com/mpbarbosa/skills"
+    },
+    {
+      "id": "spotify-clone-css",
+      "name": "spotify-clone-css",
+      "path": "/home/mpb/Documents/GitHub/spotify-clone-css",
+      "description": "This project is a clone of the Spotify web player interface, created using HTML and CSS. The goal of this project is to replicate the look and feel of Spotify's"
+    },
+    {
+      "id": "star-wars",
+      "name": "star_wars",
+      "path": "/home/mpb/Documents/GitHub/star_wars",
+      "description": "trabalho de TCC do meu filho que trata do conteúdo político na Saga Star Wars",
+      "url": "https://github.com/mpbarbosa/star_wars"
+    },
+    {
+      "id": "sticker-bag",
+      "name": "sticker_bag",
+      "path": "/home/mpb/Documents/GitHub/sticker_bag",
+      "description": "An Androide app for register all 2026 world soccer cup sticker album. Developed in Kotlin.",
+      "url": "https://github.com/mpbarbosa/sticker_bag"
+    },
+    {
+      "id": "strudel-songs",
+      "name": "strudel_songs",
+      "path": "/home/mpb/Documents/GitHub/strudel_songs",
+      "description": "Strudel songs",
+      "url": "https://github.com/mpbarbosa/strudel_songs"
+    },
+    {
+      "id": "sysmon",
+      "name": "sysmon",
+      "path": "/home/mpb/Documents/GitHub/sysmon",
+      "description": "A shell Desktop developed with Quickshell and qmlls to show cpu and memory consume",
+      "url": "https://github.com/mpbarbosa/sysmon"
+    },
+    {
+      "id": "sysupdate",
+      "name": "sysupdate",
+      "path": "/home/mpb/Documents/GitHub/sysupdate",
+      "description": "A shell script suite  to update Linux assets with QuichShell GUI",
+      "url": "https://github.com/mpbarbosa/sysupdate"
+    },
+    {
+      "id": "tabela-periodica",
+      "name": "tabela_periodica",
+      "path": "/home/mpb/Documents/GitHub/tabela_periodica",
+      "description": "A SPA (Single Page Application) developed in TypeScript/Node that displays the periodic table (Chemistry)",
+      "url": "https://github.com/mpbarbosa/tabela_periodica"
+    },
+    {
+      "id": "teacher-charles",
+      "name": "teacher_charles",
+      "path": "/home/mpb/Documents/GitHub/teacher_charles",
+      "description": "A local chatbot with a native english teacher persona",
+      "url": "https://github.com/mpbarbosa/teacher_charles"
+    },
+    {
+      "id": "template-bib-javascript",
+      "name": "template_bib_javascript",
+      "path": "/home/mpb/Documents/GitHub/template_bib_javascript",
+      "description": "Template para bibliote JavaScript",
+      "url": "https://github.com/mpbarbosa/template_bib_javascript"
+    },
+    {
+      "id": "teorizando",
+      "name": "teorizando",
+      "path": "/home/mpb/Documents/GitHub/teorizando",
+      "url": "https://github.com/mpbarbosa/teorizando"
+    },
+    {
+      "id": "tmux",
+      "name": "tmux",
+      "path": "/home/mpb/Documents/GitHub/tmux",
+      "description": "Welcome to tmux!"
+    },
+    {
+      "id": "tokentop",
+      "name": "tokentop",
+      "path": "/home/mpb/Documents/GitHub/tokentop",
+      "description": "<div align=\"center\">"
+    },
+    {
+      "id": "triagem-vagas",
+      "name": "triagem_vagas",
+      "path": "/home/mpb/Documents/GitHub/triagem_vagas",
+      "description": "Fluxo n8n + Claude que tria vagas do LinkedIn contra o perfil e mede concordância, custo e tempo",
+      "url": "https://github.com/mpbarbosa/triagem_vagas"
+    },
+    {
+      "id": "trilhas-estudos",
+      "name": "trilhas_estudos",
+      "path": "/home/mpb/Documents/GitHub/trilhas_estudos",
+      "description": "Trilhas de estudos",
+      "url": "https://github.com/mpbarbosa/trilhas_estudos"
+    },
+    {
+      "id": "tui-studio",
+      "name": "tui-studio",
+      "path": "/home/mpb/Documents/GitHub/tui-studio",
+      "description": "<img src=\"public/logo-tui-studiolight.svg\" alt=\"TUIStudio\" width=\"64\" />"
+    },
+    {
+      "id": "twowayflow",
+      "name": "twowayflow",
+      "path": "/home/mpb/Documents/GitHub/twowayflow",
+      "description": "IDE for the design and development of computational solutions, supporting a two-way workflow: design → code and code → design",
+      "url": "https://github.com/mpbarbosa/twowayflow"
+    },
+    {
+      "id": "updating",
+      "name": "updating",
+      "path": "/home/mpb/Documents/GitHub/updating",
+      "description": "This is a repository to help me find the best sources of information on what is happening in the world, so that I can stay up to date.",
+      "url": "https://github.com/mpbarbosa/updating"
+    },
+    {
+      "id": "web-maps-sandbox",
+      "name": "web_maps_sandbox",
+      "path": "/home/mpb/Documents/GitHub/web_maps_sandbox",
+      "description": "Web pages with web cartography using TypeScript, CSS and HTML with open libraries like Leaflet",
+      "url": "https://github.com/mpbarbosa/web_maps_sandbox"
+    },
+    {
+      "id": "web-ui-sandbox",
+      "name": "web_ui_sandbox",
+      "path": "/home/mpb/Documents/GitHub/web_ui_sandbox",
+      "description": "Web UI Sandbox (HTML, JavaScript/TypeScript and CSS)",
+      "url": "https://github.com/mpbarbosa/web_ui_sandbox"
+    },
+    {
+      "id": "workana",
+      "name": "workana",
+      "path": "/home/mpb/Documents/GitHub/workana",
+      "description": "Gestão das propostas de projeto no site Workana",
+      "url": "https://github.com/mpbarbosa/workana"
     }
   ],
   "selectedId": "agentic-session-manager",

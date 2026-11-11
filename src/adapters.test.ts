@@ -1,12 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { avatarFor, toRepository, statusToFileChanges, logToCommits, worktreesToView } from "./adapters.ts";
+import {
+  avatarFor,
+  toRepository,
+  toOverviewRow,
+  statusToFileChanges,
+  logToCommits,
+  worktreesToView,
+} from "./adapters.ts";
 import type { Repo, Commit, GitStatusDetail, Worktree } from "../shared/types.ts";
 
 const repo = (over: Partial<Repo> = {}): Repo => ({
   id: "r1",
   name: "My Repo",
   path: "/home/u/My Repo",
-  status: { branch: "main", dirtyCount: 0, lastCommit: null, worktrees: [], available: true },
+  status: {
+    branch: "main",
+    dirtyCount: 0,
+    lastCommit: null,
+    lastCommitSubject: null,
+    lastCommitDate: null,
+    lastCommitRelative: null,
+    worktrees: [],
+    available: true,
+  },
   ...over,
 });
 
@@ -59,7 +75,19 @@ describe("toRepository", () => {
   });
 
   it("falls back to '—' branch and '' path when absent", () => {
-    const r = repo({ path: undefined, status: { branch: null, dirtyCount: 0, lastCommit: null, worktrees: [], available: false } });
+    const r = repo({
+      path: undefined,
+      status: {
+        branch: null,
+        dirtyCount: 0,
+        lastCommit: null,
+        lastCommitSubject: null,
+        lastCommitDate: null,
+        lastCommitRelative: null,
+        worktrees: [],
+        available: false,
+      },
+    });
     expect(toRepository(r)).toMatchObject({ activeBranch: "—", path: "" });
   });
 });
@@ -143,5 +171,62 @@ describe("worktreesToView", () => {
   it("labels a bare worktree", () => {
     const [w] = worktreesToView([worktree({ branch: null, isBare: true })], null);
     expect(w.branch).toBe("bare");
+  });
+});
+
+describe("toOverviewRow", () => {
+  it("reshapes a repo + status into a fleet row", () => {
+    const r = repo({
+      description: "Does a thing",
+      status: {
+        branch: "feat/x",
+        dirtyCount: 3,
+        lastCommit: "abc1234 fix the thing",
+        lastCommitSubject: "fix the thing",
+        lastCommitDate: "2026-01-02T03:04:05-03:00",
+        lastCommitRelative: "2 days ago",
+        worktrees: ["/home/u/My Repo", "/home/u/My Repo-wt"],
+        available: true,
+      },
+    });
+    expect(toOverviewRow(r)).toEqual({
+      id: "r1",
+      name: "My Repo",
+      path: "/home/u/My Repo",
+      description: "Does a thing",
+      branch: "feat/x",
+      dirtyCount: 3,
+      lastCommitSubject: "fix the thing",
+      lastCommitRelative: "2 days ago",
+      lastCommitAt: Date.parse("2026-01-02T03:04:05-03:00"),
+      worktreeCount: 2,
+      available: true,
+    });
+  });
+
+  it("counts the main working tree, so an untouched repo reports one tree", () => {
+    const r = repo({ status: { ...repo().status, worktrees: ["/home/u/My Repo"] } });
+    expect(toOverviewRow(r).worktreeCount).toBe(1);
+  });
+
+  it("leaves lastCommitAt null for a repo with no commits, and never renders null text", () => {
+    const row = toOverviewRow(repo());
+    expect(row.lastCommitAt).toBeNull();
+    expect(row.lastCommitSubject).toBe("");
+    expect(row.lastCommitRelative).toBe("");
+    expect(row.description).toBe("");
+  });
+
+  it("falls back to an em dash branch when the repo is unavailable", () => {
+    const r = repo({
+      path: undefined,
+      status: { ...repo().status, branch: null, available: false },
+    });
+    expect(toOverviewRow(r)).toMatchObject({ branch: "—", path: "", available: false });
+  });
+
+  it("treats an unparseable commit date as unknown rather than NaN", () => {
+    const r = repo({ status: { ...repo().status, lastCommitDate: "not-a-date" } });
+    expect(toOverviewRow(r).lastCommitAt).toBeNull();
   });
 });
