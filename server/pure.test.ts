@@ -9,6 +9,11 @@ import {
   selectTestRunners,
   pickDefaultBranch,
   type RunnerDetectionInput,
+  parseLastCommit,
+  LAST_COMMIT_SEP,
+  LAST_COMMIT_FORMAT,
+  worktreePathFromGitdir,
+  commonGitDirFromGitFile,
 } from "./pure.ts";
 
 describe("uniqueId", () => {
@@ -198,5 +203,87 @@ describe("pickDefaultBranch", () => {
   it("falls back to the given fallback when nothing matches", () => {
     expect(pickDefaultBranch(null, new Set(), "feature/z")).toBe("feature/z");
     expect(pickDefaultBranch("", new Set(), "feature/z")).toBe("feature/z");
+  });
+});
+
+describe("parseLastCommit", () => {
+  it("splits the packed git log line into hash, subject, ISO date and relative date", () => {
+    const raw = ["abc1234", "fix: the thing", "2026-01-02T03:04:05-03:00", "2 days ago"].join(
+      LAST_COMMIT_SEP,
+    );
+    expect(parseLastCommit(raw)).toEqual({
+      lastCommit: "abc1234 fix: the thing",
+      lastCommitSubject: "fix: the thing",
+      lastCommitDate: "2026-01-02T03:04:05-03:00",
+      lastCommitRelative: "2 days ago",
+    });
+  });
+
+  it("keeps a subject containing the separator-free punctuation git normally emits", () => {
+    const raw = ["ff00aa", "feat(api): add --all flag, fix #12", "2026-01-02T00:00:00Z", "1 hour ago"].join(
+      LAST_COMMIT_SEP,
+    );
+    expect(parseLastCommit(raw).lastCommitSubject).toBe("feat(api): add --all flag, fix #12");
+  });
+
+  it("yields all nulls for a repo with no commits (git prints nothing)", () => {
+    const empty = {
+      lastCommit: null,
+      lastCommitSubject: null,
+      lastCommitDate: null,
+      lastCommitRelative: null,
+    };
+    expect(parseLastCommit(null)).toEqual(empty);
+    expect(parseLastCommit("")).toEqual(empty);
+  });
+
+  it("survives a truncated line rather than inventing fields", () => {
+    expect(parseLastCommit("abc1234")).toEqual({
+      lastCommit: "abc1234",
+      lastCommitSubject: null,
+      lastCommitDate: null,
+      lastCommitRelative: null,
+    });
+  });
+
+  it("uses a format string that matches what it parses", () => {
+    expect(LAST_COMMIT_FORMAT.split(LAST_COMMIT_SEP)).toEqual(["%h", "%s", "%cI", "%cr"]);
+  });
+});
+
+describe("worktreePathFromGitdir", () => {
+  it("strips the trailing /.git to yield the worktree directory", () => {
+    expect(worktreePathFromGitdir("/home/u/proj/.worktrees/feat/.git\n")).toBe(
+      "/home/u/proj/.worktrees/feat",
+    );
+  });
+
+  it("returns null for empty or pathless contents", () => {
+    expect(worktreePathFromGitdir("")).toBeNull();
+    expect(worktreePathFromGitdir("   \n")).toBeNull();
+    expect(worktreePathFromGitdir(".git")).toBeNull();
+  });
+});
+
+describe("commonGitDirFromGitFile", () => {
+  it("resolves the shared git dir from a linked worktree's .git file", () => {
+    expect(commonGitDirFromGitFile("gitdir: /home/u/proj/.git/worktrees/feat\n")).toBe(
+      "/home/u/proj/.git",
+    );
+  });
+
+  it("tolerates extra whitespace and a trailing slash", () => {
+    expect(commonGitDirFromGitFile("gitdir:   /home/u/proj/.git/worktrees/feat/  ")).toBe(
+      "/home/u/proj/.git",
+    );
+  });
+
+  it("returns null for a submodule pointer, which is not a worktree", () => {
+    expect(commonGitDirFromGitFile("gitdir: ../.git/modules/vendor")).toBeNull();
+  });
+
+  it("returns null for anything that is not a gitdir pointer", () => {
+    expect(commonGitDirFromGitFile("")).toBeNull();
+    expect(commonGitDirFromGitFile("ref: refs/heads/main")).toBeNull();
   });
 });

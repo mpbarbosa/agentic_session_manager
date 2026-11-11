@@ -2,7 +2,7 @@ import express from "express";
 import type { Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { readFile, writeFile, rename, readdir, access } from "node:fs/promises";
+import { readFile, writeFile, rename, readdir, access, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import crypto from "node:crypto";
@@ -17,6 +17,10 @@ import {
   authMessage,
   selectTestRunners,
   pickDefaultBranch,
+  parseLastCommit,
+  worktreePathFromGitdir,
+  commonGitDirFromGitFile,
+  LAST_COMMIT_FORMAT,
 } from "./pure.ts";
 import type {
   BrowseEntry,
@@ -226,34 +230,95 @@ async function findForestBin(): Promise<string | null> {
   return null;
 }
 
+/**
+ * Worktree paths for a repo, read straight off the filesystem instead of shelling
+ * out to `git worktree list`.
+ *
+ * At ~105 configured repos each extra git invocation in `readStatus` costs ~250ms
+ * of wall clock on GET /api/repos (process spawn dominates — see README), and the
+ * overview only needs the paths/count. Linked worktrees are recorded as
+ * `<gitdir>/worktrees/<name>/gitdir`, so a single readdir replaces a whole spawn.
+ * Anything unexpected (a linked worktree or submodule, where `.git` is a file)
+ * degrades to just the main path; the Worktrees tab still uses real `git worktree
+ * list` via GET /api/repos/:id/worktrees.
+ */
+async function readWorktreePaths(repoPath: string): Promise<string[]> {
+  try {
+    const dotGit = path.join(repoPath, ".git");
+    const st = await stat(dotGit);
+
+    // A main checkout has a .git *directory*; a linked worktree has a .git *file*
+    // pointing at "<common>/worktrees/<name>", from which the whole set resolves.
+    let commonGitDir: string;
+    if (st.isDirectory()) {
+      commonGitDir = dotGit;
+    } else {
+      const resolved = commonGitDirFromGitFile(await readFile(dotGit, "utf8"));
+      if (!resolved) return [repoPath]; // submodule or something unexpected
+      commonGitDir = resolved;
+    }
+
+    const mainPath = path.dirname(commonGitDir);
+    let names: string[];
+    try {
+      names = await readdir(path.join(commonGitDir, "worktrees"));
+    } catch {
+      return [mainPath]; // no linked worktrees
+    }
+    const linked = await Promise.all(
+      names.map(async (name) => {
+        try {
+          return worktreePathFromGitdir(
+            await readFile(path.join(commonGitDir, "worktrees", name, "gitdir"), "utf8"),
+          );
+        } catch {
+          return null;
+        }
+      }),
+    );
+    // git lists the main working tree first, then the linked ones.
+    return [mainPath, ...linked.filter((p): p is string => p !== null)];
+  } catch {
+    return [repoPath];
+  }
+}
 async function readStatus(entry: RepoConfigEntry): Promise<RepoStatus> {
   const empty: RepoStatus = {
     branch: null,
     dirtyCount: 0,
     lastCommit: null,
+    lastCommitSubject: null,
+    lastCommitDate: null,
+    lastCommitRelative: null,
     worktrees: [],
     available: false,
   };
   if (!entry.path) return empty;
 
-  const branch = await git(entry.path, ["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (branch === null) return empty; // path missing or not a git repo
+  // Kept to two git invocations and one readdir, run concurrently: `status -b`
+  // yields the branch *and* the dirty count in one spawn (so no separate
+  // `rev-parse`), and the worktree paths come off disk. At ~105 repos each
+  // avoided spawn is worth ~250ms on GET /api/repos.
+  const [porcelain, lastCommitRaw, worktrees] = await Promise.all([
+    git(entry.path, ["status", "--porcelain=v1", "-b"]),
+    git(entry.path, ["log", "-1", `--pretty=${LAST_COMMIT_FORMAT}`]),
+    readWorktreePaths(entry.path),
+  ]);
+  if (porcelain === null) return empty; // path missing or not a git repo
 
-  const porcelain = await git(entry.path, ["status", "--porcelain"]);
-  const dirtyCount = porcelain ? porcelain.split("\n").filter(Boolean).length : 0;
+  const lines = porcelain.split("\n");
+  const header = lines[0]?.startsWith("## ") ? parseBranchLine(lines[0]) : { branch: null };
+  const dirtyCount = lines.slice(1).filter(Boolean).length;
 
-  const lastCommit = await git(entry.path, ["log", "-1", "--pretty=%h %s"]);
-
-  const worktreeList = await git(entry.path, ["worktree", "list", "--porcelain"]);
-  const worktrees = (worktreeList ?? "")
-    .split("\n")
-    .filter((line) => line.startsWith("worktree "))
-    .map((line) => line.slice("worktree ".length));
-
-  return { branch, dirtyCount, lastCommit, worktrees, available: true };
+  return {
+    branch: header.branch,
+    dirtyCount,
+    ...parseLastCommit(lastCommitRaw),
+    worktrees,
+    available: true,
+  };
 }
 
-/** Parse the `## ...` branch header line from `git status --porcelain -b`. */
 async function readStatusDetail(entry: RepoConfigEntry, cwd?: string): Promise<GitStatusDetail> {
   const base: GitStatusDetail = {
     id: entry.id,

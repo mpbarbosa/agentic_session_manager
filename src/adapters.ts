@@ -5,7 +5,13 @@ import type {
   Commit as ApiCommit,
   Worktree as ApiWorktree,
 } from "../shared/types.ts";
-import type { Repository, FileChange, Commit, Worktree } from "./types";
+import type {
+  Repository,
+  FileChange,
+  Commit,
+  Worktree,
+  RepoOverviewRow,
+} from "./types";
 
 const basename = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 
@@ -31,6 +37,31 @@ export function avatarFor(name: string): string {
 
 export function toRepository(r: ApiRepo): Repository {
   return { id: r.id, name: r.name, activeBranch: r.status?.branch ?? "—", path: r.path ?? "" };
+}
+
+/**
+ * Map one `GET /api/repos` entry to an Overview row.
+ *
+ * The API already returns everything the fleet view needs, so this is a pure
+ * reshape: the only real work is turning `lastCommitDate` into epoch ms for
+ * sorting (null when the repo is unavailable or has no commits yet) and
+ * defaulting the display fields so the table never renders "null".
+ */
+export function toOverviewRow(r: ApiRepo): RepoOverviewRow {
+  const parsed = r.status?.lastCommitDate ? Date.parse(r.status.lastCommitDate) : NaN;
+  return {
+    id: r.id,
+    name: r.name,
+    path: r.path ?? "",
+    description: r.description ?? "",
+    branch: r.status?.branch ?? "—",
+    dirtyCount: r.status?.dirtyCount ?? 0,
+    lastCommitSubject: r.status?.lastCommitSubject ?? "",
+    lastCommitRelative: r.status?.lastCommitRelative ?? "",
+    lastCommitAt: Number.isNaN(parsed) ? null : parsed,
+    worktreeCount: r.status?.worktrees?.length ?? 0,
+    available: r.status?.available ?? false,
+  };
 }
 
 function mapStatus(x: string, y: string): FileChange["status"] {

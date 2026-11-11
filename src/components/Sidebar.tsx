@@ -9,15 +9,17 @@ import {
   Rocket,
   Terminal, 
   Settings, 
-  ChevronDown,
   ChevronsUpDown,
-  FolderDot
+  FolderDot,
+  LayoutGrid,
+  Search
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { filterRepositories } from '../overview';
 
 interface SidebarProps {
-  activeView: 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings';
-  setActiveView: (view: 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings') => void;
+  activeView: 'overview' | 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings';
+  setActiveView: (view: 'overview' | 'changes' | 'history' | 'worktrees' | 'compare' | 'release' | 'settings') => void;
   repositories: Repository[];
   activeRepo: Repository;
   setActiveRepo: (repo: Repository) => void;
@@ -37,6 +39,15 @@ export default function Sidebar({
   onOpenTerminal
 }: SidebarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [repoQuery, setRepoQuery] = useState('');
+
+  // The switcher is a flat list, so at ~105 repos it needs a filter to stay usable.
+  const visible = useMemo(() => filterRepositories(repositories, repoQuery), [repositories, repoQuery]);
+
+  const closeDropdown = () => {
+    setDropdownOpen(false);
+    setRepoQuery('');
+  };
 
   return (
     <aside id="sidebar-container" className="fixed left-0 top-16 h-[calc(100vh-64px)] w-[280px] bg-surface-container-low border-r border-outline-variant flex flex-col py-4 z-40">
@@ -45,7 +56,7 @@ export default function Sidebar({
       <div className="px-4 mb-5">
         <div className="relative">
           <div 
-            onClick={() => setDropdownOpen(!dropdownOpen)}
+            onClick={() => (dropdownOpen ? closeDropdown() : setDropdownOpen(true))}
             className="flex items-center gap-3 bg-surface-container-high p-3 rounded-lg border border-outline-variant cursor-pointer hover:border-outline transition-all"
           >
             <div className="w-10 h-10 rounded bg-secondary-container flex items-center justify-center text-on-secondary-container shrink-0">
@@ -64,25 +75,65 @@ export default function Sidebar({
           </div>
 
           {dropdownOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-surface-container-highest border border-outline-variant rounded-lg shadow-xl z-50 py-1 font-mono text-xs overflow-hidden">
-              <div className="px-3 py-1 text-[10px] text-outline uppercase font-semibold">
-                Switch Repository
+            <div className="absolute top-full left-0 right-0 mt-1 bg-surface-container-highest border border-outline-variant rounded-lg shadow-xl z-50 py-1 font-mono text-xs overflow-hidden flex flex-col">
+              <div className="px-3 py-1 text-[10px] text-outline uppercase font-semibold flex items-center justify-between">
+                <span>Switch Repository</span>
+                <span className="normal-case">{visible.length}/{repositories.length}</span>
               </div>
-              {repositories.map((repo) => (
-                <button
-                  key={repo.id}
-                  onClick={() => {
-                    setActiveRepo(repo);
-                    setDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-surface-container-high transition-colors ${
-                    activeRepo.id === repo.id ? 'text-primary bg-surface-container-low' : 'text-on-surface-variant'
-                  }`}
-                >
-                  <FolderDot className="w-3.5 h-3.5" />
-                  <span className="truncate">{repo.name}</span>
-                </button>
-              ))}
+
+              <div className="px-2 pb-1.5 pt-0.5">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-outline absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    autoFocus
+                    value={repoQuery}
+                    onChange={(e) => setRepoQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') closeDropdown();
+                      if (e.key === 'Enter' && visible.length > 0) {
+                        setActiveRepo(visible[0]);
+                        closeDropdown();
+                      }
+                    }}
+                    placeholder="Filter repositories…"
+                    aria-label="Filter repositories"
+                    className="w-full bg-surface-container-low border border-outline-variant rounded pl-7 pr-2 py-1.5 text-xs text-on-surface placeholder:text-outline focus:outline-none focus:border-primary transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-y-auto max-h-[300px]">
+                {visible.length === 0 && (
+                  <div className="px-3 py-3 text-outline text-center">No match.</div>
+                )}
+                {visible.map((repo) => (
+                  <button
+                    key={repo.id}
+                    onClick={() => {
+                      setActiveRepo(repo);
+                      closeDropdown();
+                    }}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-surface-container-high transition-colors ${
+                      activeRepo.id === repo.id ? 'text-primary bg-surface-container-low' : 'text-on-surface-variant'
+                    }`}
+                  >
+                    <FolderDot className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate flex-1">{repo.name}</span>
+                    <span className="text-[10px] text-outline truncate max-w-[90px]">{repo.activeBranch}</span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => {
+                  setActiveView('overview');
+                  closeDropdown();
+                }}
+                className="border-t border-outline-variant px-3 py-2 flex items-center gap-2 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Browse all in Overview</span>
+              </button>
             </div>
           )}
         </div>
@@ -100,6 +151,18 @@ export default function Sidebar({
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-2">
+        <button
+          onClick={() => setActiveView('overview')}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all duration-150 rounded font-mono text-xs text-left ${
+            activeView === 'overview'
+              ? 'bg-surface-container-high text-primary border-l-4 border-primary font-bold'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest'
+          }`}
+        >
+          <LayoutGrid className="w-4 h-4 shrink-0" />
+          <span>Overview</span>
+        </button>
+
         <button
           onClick={() => setActiveView('changes')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all duration-150 rounded font-mono text-xs text-left ${
